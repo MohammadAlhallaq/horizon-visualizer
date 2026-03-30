@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Horizon Visualizer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            hz: {
+              bg:      'var(--hz-bg)',
+              surface: 'var(--hz-surface)',
+              surface2:'var(--hz-surface2)',
+              border:  'var(--hz-border)',
+              txt:     'var(--hz-txt)',
+              muted:   'var(--hz-muted)',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* Light mode */
+    :root {
+      --hz-bg:      #f1f5f9;
+      --hz-surface: #ffffff;
+      --hz-surface2:#f8fafc;
+      --hz-border:  #e2e8f0;
+      --hz-txt:     #0f172a;
+      --hz-muted:   #64748b;
+    }
+    /* Dark mode */
+    html.dark {
+      --hz-bg:      #0f1117;
+      --hz-surface: #1a1d27;
+      --hz-surface2:#22263a;
+      --hz-border:  #2e3250;
+      --hz-txt:     #e2e8f0;
+      --hz-muted:   #64748b;
+    }
+
+    body { font-family: 'SF Mono', 'Fira Code', monospace; }
+
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: var(--hz-bg); }
+    ::-webkit-scrollbar-thumb { background: var(--hz-border); border-radius: 3px; }
+
+    @keyframes pulse-job {
+      from { opacity: 0.7; transform: scale(0.95); }
+      to   { opacity: 1;   transform: scale(1.05); }
+    }
+    .job-processing { animation: pulse-job 0.8s infinite alternate; }
+    .modal-open { opacity: 1 !important; pointer-events: auto !important; }
+
+    select option { background: var(--hz-surface); color: var(--hz-txt); }
+
+    /* Global fixed tooltip — renders above everything, never clipped */
+    #hz-tooltip {
+      position: fixed;
+      z-index: 9999;
+      max-width: 300px;
+      background: #111827;
+      border: 1px solid #374151;
+      color: #f3f4f6;
+      font-size: 11px;
+      line-height: 1.65;
+      border-radius: 8px;
+      padding: 10px 13px;
+      font-weight: 400;
+      text-transform: none;
+      letter-spacing: normal;
+      box-shadow: 0 12px 32px rgba(0,0,0,0.5);
+      pointer-events: none;
+      white-space: normal;
+      display: none;
+      font-family: 'SF Mono', 'Fira Code', sans-serif;
+    }
+    #hz-tooltip.visible { display: block; }
+    #hz-tooltip strong { color: #a78bfa; font-weight: 600; }
+    #hz-tooltip code   { color: #34d399; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 10px; }
+    #hz-tooltip::after {
+      content: '';
+      position: absolute;
+      top: 100%;
+      left: var(--arrow-left, 50%);
+      transform: translateX(-50%);
+      border: 5px solid transparent;
+      border-top-color: #374151;
+    }
+
+    .tip-icon {
+      cursor: help;
+      opacity: 0.4;
+      transition: opacity 0.15s;
+      font-style: normal;
+      font-size: 12px;
+      line-height: 1;
+    }
+    .tip-icon:hover { opacity: 1; }
+  </style>
+</head>
+<body class="bg-hz-bg text-hz-txt h-screen overflow-hidden">
+  <div class="flex h-screen">
+
+    <!-- Sidebar -->
+    <aside class="w-72 min-w-[288px] bg-hz-surface border-r border-hz-border flex flex-col overflow-y-auto">
+
+      <div class="flex items-center justify-between px-4 py-4 border-b border-hz-border">
+        <div class="flex items-center gap-2.5 text-violet-500 font-bold tracking-widest text-sm">
+          <span class="text-lg">&#9670;</span>
+          <span>Horizon Visualizer</span>
+        </div>
+        <!-- Theme toggle -->
+        <button id="theme-toggle" title="Toggle theme"
+          class="w-8 h-8 flex items-center justify-center rounded-lg border border-hz-border hover:border-violet-500 text-hz-muted hover:text-violet-500 transition-colors cursor-pointer text-sm">
+          <span id="theme-icon">&#9790;</span>
+        </button>
+      </div>
+
+      <!-- Supervisors -->
+      <section class="p-4 border-b border-hz-border flex flex-col gap-2.5">
+        <h3 class="text-[10px] uppercase tracking-[0.12em] text-hz-muted">Supervisors</h3>
+        <div id="supervisors-list" class="flex flex-col gap-1.5"></div>
+        <button id="add-supervisor"
+          class="px-3 py-1.5 border border-hz-border hover:border-violet-500 hover:text-violet-500 text-hz-muted text-xs font-semibold rounded-lg cursor-pointer transition-colors text-center">
+          + Add Supervisor
+        </button>
+      </section>
+
+      <!-- Dispatch -->
+      <section class="p-4 border-b border-hz-border flex flex-col gap-2.5">
+        <h3 class="text-[10px] uppercase tracking-[0.12em] text-hz-muted">Job Dispatch</h3>
+        <div class="flex flex-col gap-1">
+          <label class="text-[10px] uppercase tracking-wide text-hz-muted">Queue</label>
+          <select id="dispatch-queue" class="bg-hz-surface2 border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors"></select>
+        </div>
+        <div class="flex flex-col gap-1">
+          <label class="text-[10px] uppercase tracking-wide text-hz-muted">Count</label>
+          <input type="number" id="dispatch-count" value="10" min="1" max="200"
+            class="bg-hz-surface2 border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
+        </div>
+        <button id="dispatch-btn"
+          class="px-3 py-1.5 bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold rounded-lg cursor-pointer transition-colors">
+          Dispatch Jobs
+        </button>
+        <button id="dispatch-burst"
+          class="px-3 py-1.5 border border-hz-border hover:border-violet-500 hover:text-violet-500 text-hz-muted text-xs font-semibold rounded-lg cursor-pointer transition-colors">
+          Burst (50)
+        </button>
+      </section>
+
+      <!-- Simulation -->
+      <section class="p-4 flex flex-col gap-2.5">
+        <h3 class="text-[10px] uppercase tracking-[0.12em] text-hz-muted">Simulation</h3>
+        <div class="flex flex-col gap-1">
+          <div class="flex justify-between">
+            <label class="text-[10px] uppercase tracking-wide text-hz-muted">Speed</label>
+            <span id="sim-speed-label" class="text-[10px] text-violet-500 font-bold">5x</span>
+          </div>
+          <input type="range" id="sim-speed" min="1" max="10" value="5"
+            class="w-full accent-violet-500 cursor-pointer" />
+        </div>
+        <div class="flex gap-2">
+          <button id="sim-toggle" class="flex-1 px-3 py-1.5 bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold rounded-lg cursor-pointer transition-colors">Pause</button>
+          <button id="sim-reset"  class="flex-1 px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-semibold rounded-lg cursor-pointer transition-colors">Reset</button>
+        </div>
+      </section>
+
+    </aside>
+
+    <!-- Main -->
+    <main class="flex-1 flex flex-col overflow-hidden">
+
+      <!-- Stats bar -->
+      <div class="flex bg-hz-surface border-b border-hz-border shrink-0">
+        <div class="flex flex-col items-center px-5 py-3 border-r border-hz-border gap-0.5">
+          <span id="stat-throughput" class="text-2xl font-bold text-violet-500 leading-none">0</span>
+          <span class="text-[10px] uppercase tracking-widest text-hz-muted">jobs/sec</span>
+        </div>
+        <div class="flex flex-col items-center px-5 py-3 border-r border-hz-border gap-0.5">
+          <span id="stat-processed" class="text-2xl font-bold text-violet-500 leading-none">0</span>
+          <span class="text-[10px] uppercase tracking-widest text-hz-muted">processed</span>
+        </div>
+        <div class="flex flex-col items-center px-5 py-3 border-r border-hz-border gap-0.5">
+          <span id="stat-retried" class="text-2xl font-bold text-violet-500 leading-none">0</span>
+          <span class="text-[10px] uppercase tracking-widest text-hz-muted">retried</span>
+        </div>
+        <div class="flex flex-col items-center px-5 py-3 border-r border-hz-border gap-0.5">
+          <span id="stat-failed" class="text-2xl font-bold text-violet-500 leading-none">0</span>
+          <span class="text-[10px] uppercase tracking-widest text-hz-muted">failed</span>
+        </div>
+        <div class="flex flex-col items-center px-5 py-3 border-r border-hz-border gap-0.5">
+          <span id="stat-pending" class="text-2xl font-bold text-violet-500 leading-none">0</span>
+          <span class="text-[10px] uppercase tracking-widest text-hz-muted">pending</span>
+        </div>
+        <div class="flex flex-col items-center px-5 py-3 gap-0.5">
+          <span id="stat-workers" class="text-2xl font-bold text-violet-500 leading-none">0</span>
+          <span class="text-[10px] uppercase tracking-widest text-hz-muted">active workers</span>
+        </div>
+      </div>
+
+      <div id="supervisors-view" class="flex-1 overflow-y-auto p-5 flex flex-col gap-5"></div>
+
+    </main>
+  </div>
+
+  <!-- Modal -->
+  <div id="modal-overlay" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 opacity-0 pointer-events-none transition-opacity duration-150">
+    <div class="bg-hz-surface border border-hz-border rounded-xl w-[460px] max-h-[90vh] overflow-y-auto flex flex-col shadow-2xl">
+
+      <div class="flex items-center justify-between px-5 py-4 border-b border-hz-border">
+        <h3 id="modal-title" class="text-sm font-bold text-hz-txt">Add Supervisor</h3>
+        <button id="modal-close" class="text-hz-muted hover:text-hz-txt text-xl leading-none cursor-pointer transition-colors">&times;</button>
+      </div>
+
+      <div class="p-5 flex flex-col gap-4">
+
+        <!-- Identity -->
+        <div class="bg-hz-surface2 border border-hz-border rounded-xl p-4 flex flex-col gap-3">
+          <div class="text-[10px] uppercase tracking-[0.12em] text-hz-muted font-semibold">Identity</div>
+
+          <div class="flex flex-col gap-1">
+            <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1">
+              Name
+            </label>
+            <input type="text" id="sv-name" placeholder="supervisor-1"
+              class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
+          </div>
+
+          <div class="flex flex-col gap-1">
+            <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
+              Queues
+              <span class="tip-icon" data-tip-id="queues">ⓘ</span>
+            </label>
+            <input type="text" id="sv-queues" placeholder="default, emails, notifications"
+              class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
+          </div>
+        </div>
+
+        <!-- Balance -->
+        <div class="bg-hz-surface2 border border-hz-border rounded-xl p-4 flex flex-col gap-3">
+          <div class="text-[10px] uppercase tracking-[0.12em] text-hz-muted font-semibold flex items-center gap-1.5">
+            Balance Strategy
+            <span class="tip-icon" data-tip-id="balance">ⓘ</span>
+          </div>
+          <select id="sv-balance"
+            class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors">
+            <option value="auto">auto — dynamic scaling per queue load</option>
+            <option value="simple">simple — fixed processes split evenly</option>
+            <option value="false">false — strict queue priority, can scale</option>
+          </select>
+
+          <!-- auto -->
+          <div class="balance-group flex flex-col gap-3" data-balance="auto">
+            <div class="flex flex-col gap-1">
+              <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
+                Auto Scaling Strategy
+                <span class="tip-icon" data-tip-id="autoscaling">ⓘ</span>
+              </label>
+              <select id="sv-autoscaling"
+                class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors">
+                <option value="size">size — scale by job count</option>
+                <option value="time">time — scale by estimated clear time</option>
+              </select>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <div class="flex flex-col gap-1">
+                <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
+                  Min Processes
+                  <span class="tip-icon" data-tip-id="min-processes-auto">ⓘ</span>
+                </label>
+                <input type="number" id="sv-min-processes" value="1" min="1" max="20" class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
+              </div>
+              <div class="flex flex-col gap-1">
+                <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
+                  Max Processes
+                  <span class="tip-icon" data-tip-id="max-processes-auto">ⓘ</span>
+                </label>
+                <input type="number" id="sv-max-processes" value="10" min="1" max="50" class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
+              </div>
+              <div class="flex flex-col gap-1">
+                <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
+                  Balance Max Shift
+                  <span class="tip-icon" data-tip-id="max-shift">ⓘ</span>
+                </label>
+                <input type="number" id="sv-balance-max-shift" value="1" min="1" max="10" class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
+              </div>
+              <div class="flex flex-col gap-1">
+                <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
+                  Balance Cooldown
+                  <span class="tip-icon" data-tip-id="cooldown">ⓘ</span>
+                </label>
+                <input type="number" id="sv-balance-cooldown" value="3" min="1" max="30" class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
+              </div>
+            </div>
+          </div>
+
+          <!-- simple -->
+          <div class="balance-group flex flex-col gap-3" data-balance="simple">
+            <div class="flex flex-col gap-1">
+              <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
+                Processes
+                <span class="tip-icon" data-tip-id="processes-simple">ⓘ</span>
+              </label>
+              <input type="number" id="sv-processes" value="4" min="1" max="50" class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
+            </div>
+          </div>
+
+          <!-- false -->
+          <div class="balance-group flex flex-col gap-3" data-balance="false">
+            <div class="grid grid-cols-2 gap-2">
+              <div class="flex flex-col gap-1">
+                <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
+                  Min Processes
+                  <span class="tip-icon" data-tip-id="min-processes-false">ⓘ</span>
+                </label>
+                <input type="number" id="sv-false-min-processes" value="1" min="1" max="20" class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
+              </div>
+              <div class="flex flex-col gap-1">
+                <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
+                  Max Processes
+                  <span class="tip-icon" data-tip-id="max-processes-false">ⓘ</span>
+                </label>
+                <input type="number" id="sv-false-max-processes" value="10" min="1" max="50" class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
+              </div>
+              <div class="flex flex-col gap-1">
+                <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
+                  Balance Max Shift
+                  <span class="tip-icon" data-tip-id="max-shift-false">ⓘ</span>
+                </label>
+                <input type="number" id="sv-false-balance-max-shift" value="1" min="1" max="10" class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
+              </div>
+              <div class="flex flex-col gap-1">
+                <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
+                  Balance Cooldown
+                  <span class="tip-icon" data-tip-id="cooldown-false">ⓘ</span>
+                </label>
+                <input type="number" id="sv-false-balance-cooldown" value="3" min="1" max="30" class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Job Behavior -->
+        <div class="bg-hz-surface2 border border-hz-border rounded-xl p-4 flex flex-col gap-3">
+          <div class="text-[10px] uppercase tracking-[0.12em] text-hz-muted font-semibold">Job Behavior</div>
+          <div class="grid grid-cols-2 gap-2">
+            <div class="flex flex-col gap-1">
+              <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
+                Runtime <span class="normal-case opacity-60">ms</span>
+                <span class="tip-icon" data-tip-id="runtime">ⓘ</span>
+              </label>
+              <input type="number" id="sv-job-runtime" value="800" min="100" max="10000" step="100" class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
+            </div>
+            <div class="flex flex-col gap-1">
+              <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
+                Failure Rate <span class="normal-case opacity-60">%</span>
+                <span class="tip-icon" data-tip-id="failure-rate">ⓘ</span>
+              </label>
+              <input type="number" id="sv-failure-rate" value="5" min="0" max="100" class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
+            </div>
+            <div class="flex flex-col gap-1">
+              <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
+                Tries
+                <span class="tip-icon" data-tip-id="tries">ⓘ</span>
+              </label>
+              <input type="number" id="sv-tries" value="1" min="1" max="20" class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
+            </div>
+            <div class="flex flex-col gap-1">
+              <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
+                Timeout <span class="normal-case opacity-60">sec</span>
+                <span class="tip-icon" data-tip-id="timeout">ⓘ</span>
+              </label>
+              <input type="number" id="sv-timeout" value="60" min="1" max="300" class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
+            </div>
+          </div>
+          <div class="flex flex-col gap-1">
+            <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
+              Backoff <span class="normal-case opacity-60">sec</span>
+              <span class="tip-icon" data-tip-id="backoff">ⓘ</span>
+            </label>
+            <input type="text" id="sv-backoff" value="0" placeholder="0 or 1,5,10"
+              class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
+          </div>
+        </div>
+
+      </div>
+
+      <div class="flex gap-2 justify-end px-5 py-4 border-t border-hz-border">
+        <button id="modal-cancel" class="px-4 py-1.5 border border-hz-border hover:border-violet-500 hover:text-violet-500 text-hz-muted text-xs font-semibold rounded-lg cursor-pointer transition-colors">Cancel</button>
+        <button id="modal-save"   class="px-4 py-1.5 bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold rounded-lg cursor-pointer transition-colors">Save</button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Global tooltip — fixed position, never clipped by modal overflow -->
+  <div id="hz-tooltip"></div>
+
+  <script src="app.js"></script>
+
+  <script>
+    const TIPS = {
+      queues: `Comma-separated queue names processed by this supervisor. For <strong>false</strong> balance, order is strict priority — the first queue is always fully drained before the second. For <strong>auto</strong>, order has no effect; workers are allocated dynamically by load.`,
+
+      balance: `<strong>auto</strong> — dynamically scales workers per queue based on workload. Does not enforce queue priority.<br><br><strong>simple</strong> — fixed total processes split evenly. Workers are queue-dedicated, no scaling.<br><br><strong>false</strong> — strict queue priority order. Workers drain queue #1 before touching queue #2. Can still scale with min/max.`,
+
+      autoscaling: `<strong>size</strong> — assigns workers based on the total number of jobs on each queue.<br><br><strong>time</strong> — assigns based on estimated time to clear the queue (job count × avg runtime). Favors queues with slower, backlogged jobs.`,
+
+      'min-processes-auto': `Minimum worker processes <strong>per queue</strong>. Must be ≥ 1. With 2 queues and minProcesses=1, Horizon maintains at least 2 workers total even when queues are empty.`,
+
+      'max-processes-auto': `Maximum <strong>total</strong> worker processes across all queues. Horizon will not spawn beyond this regardless of load. Set to 0 to prevent spawning any processes.`,
+
+      'max-shift': `Max processes added or destroyed per cooldown period (<code>balanceMaxShift</code>). Lower = smoother scaling. Higher = faster reaction to load spikes.`,
+
+      cooldown: `Seconds between balance adjustments (<code>balanceCooldown</code>). Horizon waits this long before scaling up or down again. Prevents thrashing under bursty load.`,
+
+      'processes-simple': `Total fixed worker processes split evenly across queues. E.g., 4 processes ÷ 2 queues = 2 dedicated workers each. Workers are queue-locked — they only pick jobs from their assigned queue. <strong>No auto-scaling.</strong>`,
+
+      'min-processes-false': `Minimum <strong>total</strong> worker processes (not per-queue, unlike auto). Horizon maintains at least this many workers at all times.`,
+
+      'max-processes-false': `Maximum <strong>total</strong> workers Horizon can scale to when jobs accumulate. Workers still process queues in strict priority order.`,
+
+      'max-shift-false': `Max processes added or removed per cooldown period. Controls how aggressively Horizon scales under accumulating load.`,
+
+      'cooldown-false': `Seconds between scaling adjustments. Prevents Horizon from thrashing workers up and down under bursty traffic.`,
+
+      runtime: `Simulated job execution time in milliseconds. In real Horizon this varies per job class. Used by the <strong>time</strong> auto-scaling strategy to estimate queue clear time.`,
+
+      'failure-rate': `Percentage of jobs that randomly fail. Failed jobs are retried if <strong>tries &gt; 1</strong>, otherwise permanently failed and moved to the failed jobs table.`,
+
+      tries: `Maximum attempts per job (<code>tries</code>). After exhausting all tries the job is permanently failed. Must be adjusted when using <strong>WithoutOverlapping</strong> or <strong>RateLimited</strong> middleware as they consume attempts. Setting to 0 allows unlimited attempts.`,
+
+      timeout: `Seconds a worker can run a job before being forcefully terminated (<code>timeout</code>). Must be <strong>greater</strong> than any job-level timeout and <strong>shorter</strong> than <code>retry_after</code> in queue.php — otherwise jobs may be processed twice. During auto scale-down, workers hanging beyond this limit are force-killed.`,
+
+      backoff: `Seconds to wait before retrying a failed job (<code>backoff</code>). Use comma-separated values for exponential backoff: <code>1,5,10</code> = 1s on 1st retry, 5s on 2nd, 10s on 3rd and beyond. Critical when using <strong>WithoutOverlapping</strong> or <strong>RateLimited</strong> middleware.`,
+    };
+
+    (function initTooltips() {
+      const box = document.getElementById('hz-tooltip');
+
+      document.querySelectorAll('[data-tip-id]').forEach(el => {
+        el.addEventListener('mouseenter', () => {
+          const content = TIPS[el.dataset.tipId];
+          if (!content) return;
+
+          box.innerHTML = content;
+          box.classList.add('visible');
+
+          // Position after paint so offsetWidth/Height are accurate
+          requestAnimationFrame(() => {
+            const anchor = el.getBoundingClientRect();
+            const bw = box.offsetWidth;
+            const bh = box.offsetHeight;
+            const gap = 8;
+
+            // Prefer above, fall back to below
+            let top = anchor.top - bh - gap;
+            let arrowOnBottom = true;
+            if (top < 8) {
+              top = anchor.bottom + gap;
+              arrowOnBottom = false;
+            }
+
+            // Center horizontally on anchor, clamp to viewport
+            let left = anchor.left + anchor.width / 2 - bw / 2;
+            left = Math.max(8, Math.min(left, window.innerWidth - bw - 8));
+
+            // Arrow position relative to tooltip box
+            const arrowLeft = (anchor.left + anchor.width / 2) - left;
+            box.style.setProperty('--arrow-left', arrowLeft + 'px');
+
+            // Flip arrow to top when tooltip is below anchor
+            box.style.setProperty('top',  top  + 'px');
+            box.style.setProperty('left', left + 'px');
+
+            if (arrowOnBottom) {
+              box.style.cssText += ';' + [
+                'top:'  + top  + 'px',
+                'left:' + left + 'px',
+              ].join(';');
+              box.querySelector('::after'); // noop — handled via CSS
+            }
+          });
+        });
+
+        el.addEventListener('mouseleave', () => {
+          box.classList.remove('visible');
+        });
+      });
+    })();
+  </script>
+</body>
+</html>
