@@ -102,15 +102,16 @@ function createSupervisor(opts = {}) {
 
 // ─── Dispatch ────────────────────────────────────────────────────────────────
 
-function dispatchToQueue(queueName, count) {
-  for (const sv of state.supervisors) {
-    const q = sv.queues.find(q => q.name === queueName);
-    if (q) {
-      for (let i = 0; i < count; i++) {
-        q.pending.push({ id: uid(), attempts: 0 });
-      }
-      return;
-    }
+function dispatchToQueue(value, count) {
+  const [svId, queueName] = value.split('|');
+  const sv = state.supervisors.find(s => s.id == svId);
+  if (!sv) return;
+
+  const q = sv.queues.find(q => q.name === queueName);
+  if (!q) return;
+
+  for (let i = 0; i < count; i++) {
+    q.pending.push({ id: uid(), attempts: 0 });
   }
 }
 
@@ -250,7 +251,7 @@ function clamp(val, min, max) { return Math.max(min, Math.min(max, val)); }
 // ─── Work Assignment ─────────────────────────────────────────────────────────
 
 function assignWork(sv, now) {
-  if (sv.balance === 'auto')   return assignAuto(sv, now);
+  if (sv.balance === 'auto') return assignAuto(sv, now);
   if (sv.balance === 'simple') return assignSimple(sv, now);
   /* false */                  return assignPriority(sv, now);
 }
@@ -364,8 +365,8 @@ function renderSupervisorCard(card, sv) {
   const strategyLabel = sv.balance === 'auto'
     ? `auto · ${sv.autoScalingStrategy}`
     : sv.balance === 'simple'
-    ? `simple · ${sv.processes} proc`
-    : `priority`;
+      ? `simple · ${sv.processes} proc`
+      : `priority`;
 
   let header = card.querySelector('[data-role="sv-header"]');
   if (!header) { header = document.createElement('div'); header.dataset.role = 'sv-header'; header.className = 'flex items-center justify-between px-4 py-3 border-b border-hz-border bg-hz-surface2'; card.appendChild(header); }
@@ -424,8 +425,8 @@ function renderQueueRow(row, sv, q) {
     <div class="flex flex-wrap items-center gap-1 min-h-7 bg-hz-surface2 rounded p-1.5 overflow-hidden">
       ${renderJobBubbles(q, queueWorkers, q.color)}
       ${q.pending.length === 0 && queueWorkers.length === 0
-        ? '<span class="text-[10px] text-hz-muted opacity-50">empty</span>'
-        : ''}
+      ? '<span class="text-[10px] text-hz-muted opacity-50">empty</span>'
+      : ''}
     </div>
     <div class="h-0.5 bg-hz-surface2 rounded-full overflow-hidden">
       <div style="background:${q.color};width:${Math.min(100, q.pending.length * 4)}%" class="h-full rounded-full transition-all duration-300"></div>
@@ -453,8 +454,8 @@ function renderWorkers(section, sv) {
   const hint = sv.balance === 'simple'
     ? 'queue-dedicated · no scaling'
     : sv.balance === 'auto'
-    ? `min ${sv.minProcesses}/queue · max ${sv.maxProcesses} total · shift ${sv.balanceMaxShift}`
-    : `min ${sv.minProcesses} · max ${sv.maxProcesses} total · strict priority`;
+      ? `min ${sv.minProcesses}/queue · max ${sv.maxProcesses} total · shift ${sv.balanceMaxShift}`
+      : `min ${sv.minProcesses} · max ${sv.maxProcesses} total · strict priority`;
 
   section.innerHTML = `
     <div class="flex flex-col gap-2">
@@ -480,17 +481,17 @@ function renderWorker(w, sv) {
   const borderStyle = w.state === 'busy' && color
     ? `border-color:${color}`
     : idleColor
-    ? `border-color:${idleColor}44`
-    : '';
+      ? `border-color:${idleColor}44`
+      : '';
 
   const bgStyle = w.state === 'busy' && color
     ? `background:${color}22`
     : '';
 
   const stateClass = {
-    idle:   'border-hz-border bg-hz-surface2 text-hz-muted',
-    busy:   'text-violet-500',
-    done:   'border-emerald-500/50 bg-emerald-500/10 text-emerald-500',
+    idle: 'border-hz-border bg-hz-surface2 text-hz-muted',
+    busy: 'text-violet-500',
+    done: 'border-emerald-500/50 bg-emerald-500/10 text-emerald-500',
     failed: 'border-red-500/50 bg-red-500/10 text-red-500',
   }[w.state] || '';
 
@@ -498,11 +499,11 @@ function renderWorker(w, sv) {
     <div class="relative w-9 h-9 rounded flex items-center justify-center text-[9px] font-bold border transition-all overflow-hidden ${stateClass}"
          style="${borderStyle};${bgStyle}"
          title="${w.label}${w.queue ? ` · ${w.queue}` : w.assignedQueue ? ` → ${w.assignedQueue}` : ' · idle'}">
-      ${w.state === 'idle'   ? `<span style="${idleColor ? `color:${idleColor}` : ''}">${w.label}</span>` : ''}
-      ${w.state === 'busy'   ? `<span style="color:${color}">${w.label}</span>` : ''}
-      ${w.state === 'done'   ? '&#10003;' : ''}
+      ${w.state === 'idle' ? `<span style="${idleColor ? `color:${idleColor}` : ''}">${w.label}</span>` : ''}
+      ${w.state === 'busy' ? `<span style="color:${color}">${w.label}</span>` : ''}
+      ${w.state === 'done' ? '&#10003;' : ''}
       ${w.state === 'failed' ? '&#10007;' : ''}
-      ${w.state === 'busy'   ? `<div class="absolute bottom-0 left-0 h-0.5 transition-all duration-100" style="width:${Math.round(w.progress * 100)}%;background:${color}"></div>` : ''}
+      ${w.state === 'busy' ? `<div class="absolute bottom-0 left-0 h-0.5 transition-all duration-100" style="width:${Math.round(w.progress * 100)}%;background:${color}"></div>` : ''}
     </div>
   `;
 }
@@ -520,9 +521,12 @@ function renderSidebarSupervisors() {
     </div>
   `).join('');
 
-  document.getElementById('dispatch-queue').innerHTML = state.supervisors.flatMap(sv =>
-    sv.queues.map(q => `<option value="${q.name}">${sv.name} / ${q.name}</option>`)
-  ).join('');
+  document.getElementById('dispatch-queue').innerHTML =
+    state.supervisors.flatMap(sv =>
+      sv.queues.map(q =>
+        `<option value="${sv.id}|${q.name}">${sv.name} / ${q.name}</option>`
+      )
+    ).join('');
 }
 
 // ─── Modal ───────────────────────────────────────────────────────────────────
@@ -598,7 +602,7 @@ function saveModal() {
   const backoffRaw = document.getElementById('sv-backoff').value;
   const backoff = backoffRaw.split(',').map(s => parseFloat(s.trim())).filter(n => !isNaN(n));
 
-  const isAuto  = balance === 'auto';
+  const isAuto = balance === 'auto';
   const isFalse = balance === 'false';
 
   const opts = {
@@ -610,23 +614,23 @@ function saveModal() {
     minProcesses: isAuto
       ? parseInt(document.getElementById('sv-min-processes').value) || 1
       : isFalse
-      ? parseInt(document.getElementById('sv-false-min-processes').value) || 1
-      : 1,
+        ? parseInt(document.getElementById('sv-false-min-processes').value) || 1
+        : 1,
     maxProcesses: isAuto
       ? parseInt(document.getElementById('sv-max-processes').value) || 10
       : isFalse
-      ? parseInt(document.getElementById('sv-false-max-processes').value) || 10
-      : 10,
+        ? parseInt(document.getElementById('sv-false-max-processes').value) || 10
+        : 10,
     balanceMaxShift: isAuto
       ? parseInt(document.getElementById('sv-balance-max-shift').value) || 1
       : isFalse
-      ? parseInt(document.getElementById('sv-false-balance-max-shift').value) || 1
-      : 1,
+        ? parseInt(document.getElementById('sv-false-balance-max-shift').value) || 1
+        : 1,
     balanceCooldown: isAuto
       ? parseInt(document.getElementById('sv-balance-cooldown').value) || 3
       : isFalse
-      ? parseInt(document.getElementById('sv-false-balance-cooldown').value) || 3
-      : 3,
+        ? parseInt(document.getElementById('sv-false-balance-cooldown').value) || 3
+        : 3,
     jobRuntime: parseInt(document.getElementById('sv-job-runtime').value) || 800,
     failureRate: parseFloat(document.getElementById('sv-failure-rate').value) || 0,
     tries: parseInt(document.getElementById('sv-tries').value) || 1,
