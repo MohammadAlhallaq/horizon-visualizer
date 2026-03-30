@@ -20,7 +20,7 @@ function queueColor(i) { return QUEUE_COLORS[i % QUEUE_COLORS.length]; }
 
 // ─── Supervisor / Worker Factories ───────────────────────────────────────────
 
-function makeWorker(index, assignedQueue = null) {
+function makeWorker(index, assignedQueue = null, bornAt = null) {
   return {
     id: uid(),
     index,
@@ -33,6 +33,11 @@ function makeWorker(index, assignedQueue = null) {
     _job: null,
     _startReal: null,
     _flashAt: null,
+    _idleSince: null,    // real ms when became idle (for rest)
+    _lastEmptyAt: null,  // real ms when last found queue empty (for sleep)
+    _jobsProcessed: 0,   // jobs completed (for maxJobs recycling)
+    _bornAt: bornAt !== null ? bornAt : performance.now(), // for maxTime recycling
+    _recycle: false,     // flag: replace with fresh worker after current job
   };
 }
 
@@ -88,6 +93,12 @@ function createSupervisor(opts = {}) {
     tries: opts.tries || 1,
     timeout: opts.timeout || 60,
     backoff: opts.backoff || [0],
+    // worker lifecycle
+    sleep: opts.sleep ?? 3,
+    rest: opts.rest ?? 0,
+    maxJobs: opts.maxJobs ?? 0,
+    maxTime: opts.maxTime ?? 0,
+    memory: opts.memory ?? 128,
     // runtime
     queues,
     workers: [],
@@ -168,13 +179,21 @@ function tickSupervisor(sv, now) {
         const q = sv.queues.find(q => q.name === worker.queue);
         if (q) q.failed++;
         state.stats.failed++;
+        worker._jobsProcessed++;
         worker.state = 'failed';
       } else {
         const q = sv.queues.find(q => q.name === worker.queue);
         if (q) q.processed++;
         state.stats.processed++;
         throughputWindow.push(now);
+        worker._jobsProcessed++;
         worker.state = 'done';
+      }
+
+      // Flag for recycling if maxJobs or maxTime exceeded
+      if (!worker._recycle) {
+        if (sv.maxJobs > 0 && worker._jobsProcessed >= sv.maxJobs) worker._recycle = true;
+        if (sv.maxTime > 0 && (now - worker._bornAt) * state.speed >= sv.maxTime * 1000) worker._recycle = true;
       }
 
       worker._flashAt = now;
@@ -182,14 +201,30 @@ function tickSupervisor(sv, now) {
     }
   }
 
-  // Flash done/failed → idle
-  for (const worker of sv.workers) {
+  // Flash done/failed → idle (or recycle)
+  for (let i = sv.workers.length - 1; i >= 0; i--) {
+    const worker = sv.workers[i];
     if ((worker.state === 'done' || worker.state === 'failed') && worker._flashAt) {
       if (now - worker._flashAt > 350 / state.speed) {
-        worker.state = 'idle';
-        worker.queue = null;
-        worker.progress = 0;
-        worker._flashAt = null;
+        if (worker._recycle) {
+          sv.workers[i] = makeWorker(worker.index, worker.assignedQueue, now);
+        } else {
+          worker.state = 'idle';
+          worker.queue = null;
+          worker.progress = 0;
+          worker._flashAt = null;
+          worker._idleSince = now;
+        }
+      }
+    }
+  }
+
+  // Recycle idle workers that exceeded maxTime
+  if (sv.maxTime > 0) {
+    for (let i = sv.workers.length - 1; i >= 0; i--) {
+      const w = sv.workers[i];
+      if (w.state === 'idle' && (now - w._bornAt) * state.speed >= sv.maxTime * 1000) {
+        sv.workers[i] = makeWorker(w.index, w.assignedQueue, now);
       }
     }
   }
@@ -237,7 +272,7 @@ function scaleWorkers(sv, now) {
   const shift = Math.min(sv.balanceMaxShift, Math.abs(diff));
 
   if (diff > 0) {
-    for (let i = 0; i < shift; i++) sv.workers.push(makeWorker(sv.workers.length));
+    for (let i = 0; i < shift; i++) sv.workers.push(makeWorker(sv.workers.length, null, now));
   } else if (diff < 0) {
     let removed = 0;
     for (let i = sv.workers.length - 1; i >= 0 && removed < shift; i--) {
@@ -249,6 +284,17 @@ function scaleWorkers(sv, now) {
 function clamp(val, min, max) { return Math.max(min, Math.min(max, val)); }
 
 // ─── Work Assignment ─────────────────────────────────────────────────────────
+
+function isWorkerAvailable(worker, sv, now) {
+  if (worker.state !== 'idle') return false;
+  // rest: mandatory idle period after each job
+  if (sv.rest > 0 && worker._idleSince !== null &&
+      (now - worker._idleSince) * state.speed < sv.rest * 1000) return false;
+  // sleep: poll interval after finding queue empty
+  if (sv.sleep > 0 && worker._lastEmptyAt !== null &&
+      (now - worker._lastEmptyAt) * state.speed < sv.sleep * 1000) return false;
+  return true;
+}
 
 function assignWork(sv, now) {
   if (sv.balance === 'auto') return assignAuto(sv, now);
@@ -265,25 +311,33 @@ function assignAuto(sv, now) {
     return b.pending.length - a.pending.length;
   });
 
-  for (const worker of sv.workers.filter(w => w.state === 'idle')) {
+  for (const worker of sv.workers) {
+    if (!isWorkerAvailable(worker, sv, now)) continue;
     const q = sortedQueues.find(q => q.pending.length > 0);
-    if (!q) break;
+    if (!q) { worker._lastEmptyAt = now; break; }
     assignWorkerToJob(worker, q, now);
   }
 }
 
 function assignSimple(sv, now) {
   // Workers are locked to their assigned queue
-  for (const worker of sv.workers.filter(w => w.state === 'idle')) {
+  for (const worker of sv.workers) {
+    if (!isWorkerAvailable(worker, sv, now)) continue;
     const q = sv.queues.find(q => q.name === worker.assignedQueue);
-    if (q && q.pending.length > 0) assignWorkerToJob(worker, q, now);
+    if (!q) continue;
+    if (q.pending.length > 0) {
+      assignWorkerToJob(worker, q, now);
+    } else {
+      worker._lastEmptyAt = now;
+    }
   }
 }
 
 function assignPriority(sv, now) {
   // Docs: strict queue order — first queue always processed first
   // Workers only move to next queue when higher-priority queue is empty
-  for (const worker of sv.workers.filter(w => w.state === 'idle')) {
+  for (const worker of sv.workers) {
+    if (!isWorkerAvailable(worker, sv, now)) continue;
     let assigned = false;
     for (const q of sv.queues) {
       if (q.pending.length > 0) {
@@ -292,7 +346,7 @@ function assignPriority(sv, now) {
         break;
       }
     }
-    if (!assigned) break;
+    if (!assigned) { worker._lastEmptyAt = now; break; }
   }
 }
 
@@ -306,6 +360,8 @@ function assignWorkerToJob(worker, queue, now) {
   worker._startReal = now * state.speed;
   worker._flashAt = null;
   worker._job = { ...job, attempts: job.attempts + 1 };
+  worker._idleSince = null;
+  worker._lastEmptyAt = null;
 }
 
 // ─── Stats ───────────────────────────────────────────────────────────────────
@@ -380,7 +436,7 @@ function renderSupervisorCard(card, sv) {
     </div>
     <div class="text-[11px] text-hz-muted flex gap-3 flex-wrap">
       <span>${sv.queues.map((q, i) => `<span style="color:${q.color}">&#9679;</span> ${q.name}${sv.balance === 'false' && i < sv.queues.length - 1 ? ' &gt;' : ''}`).join(' ')}</span>
-      <span>${busyCount}/${sv.workers.length} busy · tries:${sv.tries} · timeout:${sv.timeout}s</span>
+      <span>${busyCount}/${sv.workers.length} busy · tries:${sv.tries} · timeout:${sv.timeout}s${sv.sleep > 0 ? ` · sleep:${sv.sleep}s` : ''}${sv.rest > 0 ? ` · rest:${sv.rest}s` : ''}${sv.maxJobs > 0 ? ` · maxJobs:${sv.maxJobs}` : ''}${sv.maxTime > 0 ? ` · maxTime:${sv.maxTime}s` : ''}</span>
     </div>
   `;
 
@@ -451,11 +507,17 @@ function renderJobBubbles(q, queueWorkers, color) {
 }
 
 function renderWorkers(section, sv) {
-  const hint = sv.balance === 'simple'
+  const lifecycleHint = [
+    sv.maxJobs > 0 ? `recycle/${sv.maxJobs}jobs` : '',
+    sv.maxTime > 0 ? `recycle/${sv.maxTime}s` : '',
+  ].filter(Boolean).join(' · ');
+
+  const hint = (sv.balance === 'simple'
     ? 'queue-dedicated · no scaling'
     : sv.balance === 'auto'
       ? `min ${sv.minProcesses}/queue · max ${sv.maxProcesses} total · shift ${sv.balanceMaxShift}`
-      : `min ${sv.minProcesses} · max ${sv.maxProcesses} total · strict priority`;
+      : `min ${sv.minProcesses} · max ${sv.maxProcesses} total · strict priority`)
+    + (lifecycleHint ? ` · ${lifecycleHint}` : '');
 
   section.innerHTML = `
     <div class="flex flex-col gap-2">
@@ -471,6 +533,21 @@ function renderWorkers(section, sv) {
 }
 
 function renderWorker(w, sv) {
+  const now = performance.now();
+
+  // Rest: mandatory idle period after job completion
+  const inRest = w.state === 'idle' && sv.rest > 0 && w._idleSince !== null &&
+    (now - w._idleSince) * state.speed < sv.rest * 1000;
+
+  // Sleep: poll delay after finding queue empty (only when not already in rest)
+  const inSleep = !inRest && w.state === 'idle' && sv.sleep > 0 && w._lastEmptyAt !== null &&
+    (now - w._lastEmptyAt) * state.speed < sv.sleep * 1000;
+
+  const restProgress  = inRest  ? Math.max(0, 1 - (now - w._idleSince)   * state.speed / (sv.rest  * 1000)) : 0;
+  const sleepProgress = inSleep ? Math.max(0, 1 - (now - w._lastEmptyAt) * state.speed / (sv.sleep * 1000)) : 0;
+  const restRemain    = inRest  ? Math.max(0, Math.ceil((sv.rest  * 1000 - (now - w._idleSince)   * state.speed) / 1000)) : 0;
+  const sleepRemain   = inSleep ? Math.max(0, Math.ceil((sv.sleep * 1000 - (now - w._lastEmptyAt) * state.speed) / 1000)) : 0;
+
   const activeQ = sv.queues.find(q => q.name === (w.queue || w.assignedQueue));
   const color = activeQ?.color || null;
   const assignedQ = (w.state === 'idle' && w.assignedQueue)
@@ -478,32 +555,50 @@ function renderWorker(w, sv) {
     : null;
   const idleColor = assignedQ?.color || null;
 
-  const borderStyle = w.state === 'busy' && color
-    ? `border-color:${color}`
-    : idleColor
-      ? `border-color:${idleColor}44`
+  let borderStyle, bgStyle, stateClass, innerContent, progressBar;
+
+  if (inRest) {
+    borderStyle = 'border-color:#f59e0b88';
+    bgStyle     = 'background:#f59e0b0d';
+    stateClass  = '';
+    innerContent = `<span style="color:#f59e0b;font-size:8px;line-height:1">${restRemain}s</span>`;
+    progressBar  = `<div class="absolute bottom-0 left-0 h-0.5" style="width:${Math.round(restProgress * 100)}%;background:#f59e0b"></div>`;
+  } else if (inSleep) {
+    borderStyle = 'border-color:#06b6d433';
+    bgStyle     = '';
+    stateClass  = 'bg-hz-surface2';
+    innerContent = `<span style="color:#06b6d4;font-size:8px;line-height:1">${sleepRemain}s</span>`;
+    progressBar  = `<div class="absolute bottom-0 left-0 h-0.5" style="width:${Math.round(sleepProgress * 100)}%;background:#06b6d4"></div>`;
+  } else {
+    borderStyle = w.state === 'busy' && color
+      ? `border-color:${color}`
+      : idleColor ? `border-color:${idleColor}44` : '';
+    bgStyle    = w.state === 'busy' && color ? `background:${color}22` : '';
+    stateClass = {
+      idle:   'border-hz-border bg-hz-surface2 text-hz-muted',
+      busy:   'text-violet-500',
+      done:   'border-emerald-500/50 bg-emerald-500/10 text-emerald-500',
+      failed: 'border-red-500/50 bg-red-500/10 text-red-500',
+    }[w.state] || '';
+    innerContent = `
+      ${w.state === 'idle'   ? `<span style="${idleColor ? `color:${idleColor}` : ''}">${w.label}</span>` : ''}
+      ${w.state === 'busy'   ? `<span style="color:${color}">${w.label}</span>` : ''}
+      ${w.state === 'done'   ? '&#10003;' : ''}
+      ${w.state === 'failed' ? '&#10007;' : ''}
+    `;
+    progressBar = w.state === 'busy'
+      ? `<div class="absolute bottom-0 left-0 h-0.5 transition-all duration-100" style="width:${Math.round(w.progress * 100)}%;background:${color}"></div>`
       : '';
+  }
 
-  const bgStyle = w.state === 'busy' && color
-    ? `background:${color}22`
-    : '';
-
-  const stateClass = {
-    idle: 'border-hz-border bg-hz-surface2 text-hz-muted',
-    busy: 'text-violet-500',
-    done: 'border-emerald-500/50 bg-emerald-500/10 text-emerald-500',
-    failed: 'border-red-500/50 bg-red-500/10 text-red-500',
-  }[w.state] || '';
+  const titleSuffix = inRest ? ` · rest ${restRemain}s` : inSleep ? ` · sleep ${sleepRemain}s` : '';
 
   return `
-    <div class="relative w-9 h-9 rounded flex items-center justify-center text-[9px] font-bold border transition-all overflow-hidden ${stateClass}"
+    <div class="relative w-9 h-9 rounded flex items-center justify-center text-[9px] font-bold border overflow-hidden ${stateClass}"
          style="${borderStyle};${bgStyle}"
-         title="${w.label}${w.queue ? ` · ${w.queue}` : w.assignedQueue ? ` → ${w.assignedQueue}` : ' · idle'}">
-      ${w.state === 'idle' ? `<span style="${idleColor ? `color:${idleColor}` : ''}">${w.label}</span>` : ''}
-      ${w.state === 'busy' ? `<span style="color:${color}">${w.label}</span>` : ''}
-      ${w.state === 'done' ? '&#10003;' : ''}
-      ${w.state === 'failed' ? '&#10007;' : ''}
-      ${w.state === 'busy' ? `<div class="absolute bottom-0 left-0 h-0.5 transition-all duration-100" style="width:${Math.round(w.progress * 100)}%;background:${color}"></div>` : ''}
+         title="${w.label}${w.queue ? ` · ${w.queue}` : w.assignedQueue ? ` → ${w.assignedQueue}` : ' · idle'}${titleSuffix}">
+      ${innerContent}
+      ${progressBar}
     </div>
   `;
 }
@@ -558,6 +653,11 @@ function openAddModal() {
   document.getElementById('sv-tries').value = 1;
   document.getElementById('sv-timeout').value = 60;
   document.getElementById('sv-backoff').value = '0';
+  document.getElementById('sv-sleep').value = 3;
+  document.getElementById('sv-rest').value = 0;
+  document.getElementById('sv-max-jobs').value = 0;
+  document.getElementById('sv-max-time').value = 0;
+  document.getElementById('sv-memory').value = 128;
   updateModalVisibility('auto');
   document.getElementById('modal-overlay').classList.add('modal-open');
 }
@@ -585,6 +685,11 @@ function openEditModal(id) {
   document.getElementById('sv-tries').value = sv.tries;
   document.getElementById('sv-timeout').value = sv.timeout;
   document.getElementById('sv-backoff').value = sv.backoff.join(',');
+  document.getElementById('sv-sleep').value = sv.sleep;
+  document.getElementById('sv-rest').value = sv.rest;
+  document.getElementById('sv-max-jobs').value = sv.maxJobs;
+  document.getElementById('sv-max-time').value = sv.maxTime;
+  document.getElementById('sv-memory').value = sv.memory;
   updateModalVisibility(sv.balance);
   document.getElementById('modal-overlay').classList.add('modal-open');
 }
@@ -636,6 +741,11 @@ function saveModal() {
     tries: parseInt(document.getElementById('sv-tries').value) || 1,
     timeout: parseInt(document.getElementById('sv-timeout').value) || 60,
     backoff: backoff.length ? backoff : [0],
+    sleep: parseFloat(document.getElementById('sv-sleep').value) || 0,
+    rest: parseFloat(document.getElementById('sv-rest').value) || 0,
+    maxJobs: parseInt(document.getElementById('sv-max-jobs').value) || 0,
+    maxTime: parseInt(document.getElementById('sv-max-time').value) || 0,
+    memory: parseInt(document.getElementById('sv-memory').value) || 128,
   };
 
   const editedId = state.editingId;

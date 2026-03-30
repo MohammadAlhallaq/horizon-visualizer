@@ -458,6 +458,53 @@
           </div>
         </div>
 
+        <!-- Worker Lifecycle -->
+        <div class="bg-hz-surface2 border border-hz-border rounded-xl p-4 flex flex-col gap-3">
+          <div class="text-[10px] uppercase tracking-[0.12em] text-hz-muted font-semibold">Worker Lifecycle</div>
+          <div class="grid grid-cols-2 gap-2">
+            <div class="flex flex-col gap-1">
+              <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
+                Sleep <span class="normal-case opacity-60">sec</span>
+                <span class="tip-icon" data-tip-id="sleep">ⓘ</span>
+              </label>
+              <input type="number" id="sv-sleep" value="3" min="0" max="60"
+                class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
+            </div>
+            <div class="flex flex-col gap-1">
+              <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
+                Rest <span class="normal-case opacity-60">sec</span>
+                <span class="tip-icon" data-tip-id="rest">ⓘ</span>
+              </label>
+              <input type="number" id="sv-rest" value="0" min="0" max="60"
+                class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
+            </div>
+            <div class="flex flex-col gap-1">
+              <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
+                Max Jobs
+                <span class="tip-icon" data-tip-id="max-jobs">ⓘ</span>
+              </label>
+              <input type="number" id="sv-max-jobs" value="0" min="0" max="10000"
+                class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
+            </div>
+            <div class="flex flex-col gap-1">
+              <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
+                Max Time <span class="normal-case opacity-60">sec</span>
+                <span class="tip-icon" data-tip-id="max-time">ⓘ</span>
+              </label>
+              <input type="number" id="sv-max-time" value="0" min="0" max="86400"
+                class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
+            </div>
+          </div>
+          <div class="flex flex-col gap-1">
+            <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
+              Memory <span class="normal-case opacity-60">MB</span>
+              <span class="tip-icon" data-tip-id="memory">ⓘ</span>
+            </label>
+            <input type="number" id="sv-memory" value="128" min="1" max="4096"
+              class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
+          </div>
+        </div>
+
       </div>
 
       <div class="flex gap-2 justify-end px-5 py-4 border-t border-hz-border">
@@ -510,6 +557,16 @@
       timeout: `Seconds a worker can run a job before being forcefully terminated (<code>timeout</code>). Must be <strong>greater</strong> than any job-level timeout and <strong>shorter</strong> than <code>retry_after</code> in queue.php — otherwise jobs may be processed twice. During auto scale-down, workers hanging beyond this limit are force-killed.`,
 
       backoff: `Seconds to wait before retrying a failed job (<code>backoff</code>). Use comma-separated values for exponential backoff: <code>1,5,10</code> = 1s on 1st retry, 5s on 2nd, 10s on 3rd and beyond. Critical when using <strong>WithoutOverlapping</strong> or <strong>RateLimited</strong> middleware.`,
+
+      sleep: `Seconds a worker sleeps between polls when the queue is empty (<code>sleep</code>). Default: 3. When all queues are empty, workers wait this long before checking again. Lower values increase responsiveness at the cost of more Redis round-trips. Set to 0 to poll continuously.`,
+
+      rest: `Seconds a worker pauses between jobs (<code>rest</code>). Default: 0. A mandatory idle period inserted after every job completion, regardless of queue depth. Useful to throttle a worker and reduce CPU/Redis pressure on high-throughput queues.`,
+
+      'max-jobs': `Max jobs a worker processes before gracefully restarting (<code>maxJobs</code>). Default: 0 (unlimited). Used to counteract memory leaks — once the limit is hit the worker finishes its current job, exits, and Horizon spawns a fresh replacement. In the simulation this shows as a brief recycle flash.`,
+
+      'max-time': `Max seconds a worker may live before gracefully restarting (<code>maxTime</code>). Default: 0 (unlimited). Like <strong>maxJobs</strong> but time-based — the worker exits after being alive this long. Both limits are OR-combined: whichever is hit first triggers the recycle.`,
+
+      memory: `Max RAM (MB) a worker may consume before gracefully restarting (<code>memory</code>). Default: 128. Horizon checks memory after each job; if usage exceeds this threshold the worker exits cleanly. Not simulated, but stored so you can document realistic configurations.`,
     };
 
     (function initTooltips() {
