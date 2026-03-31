@@ -151,6 +151,33 @@
     .tip-icon:hover {
       opacity: 1;
     }
+
+    /* Tour */
+    #tour-spotlight {
+      position: fixed;
+      z-index: 9000;
+      border-radius: 10px;
+      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.6);
+      pointer-events: none;
+      transition: top 0.25s cubic-bezier(.4,0,.2,1),
+                  left 0.25s cubic-bezier(.4,0,.2,1),
+                  width 0.25s cubic-bezier(.4,0,.2,1),
+                  height 0.25s cubic-bezier(.4,0,.2,1);
+    }
+
+    #tour-card {
+      position: fixed;
+      z-index: 9001;
+      width: 296px;
+      background: var(--hz-surface);
+      border: 1px solid var(--hz-border);
+      border-radius: 12px;
+      padding: 18px 20px 16px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      transition: top 0.25s cubic-bezier(.4,0,.2,1),
+                  left 0.25s cubic-bezier(.4,0,.2,1);
+    }
   </style>
 </head>
 
@@ -165,11 +192,18 @@
           <span class="text-lg">&#9670;</span>
           <span>Horizon Visualizer</span>
         </div>
-        <!-- Theme toggle -->
-        <button id="theme-toggle" title="Toggle theme"
-          class="w-8 h-8 flex items-center justify-center rounded-lg border border-hz-border hover:border-violet-500 text-hz-muted hover:text-violet-500 transition-colors cursor-pointer text-sm">
-          <span id="theme-icon">&#9790;</span>
-        </button>
+        <div class="flex gap-1.5">
+          <!-- Tour replay -->
+          <button id="tour-replay" title="Take the tour"
+            class="w-8 h-8 flex items-center justify-center rounded-lg border border-hz-border hover:border-violet-500 text-hz-muted hover:text-violet-500 transition-colors cursor-pointer text-xs font-bold">
+            ?
+          </button>
+          <!-- Theme toggle -->
+          <button id="theme-toggle" title="Toggle theme"
+            class="w-8 h-8 flex items-center justify-center rounded-lg border border-hz-border hover:border-violet-500 text-hz-muted hover:text-violet-500 transition-colors cursor-pointer text-sm">
+            <span id="theme-icon">&#9790;</span>
+          </button>
+        </div>
       </div>
 
       <!-- Supervisors -->
@@ -183,7 +217,7 @@
       </section>
 
       <!-- Dispatch -->
-      <section class="p-4 border-b border-hz-border flex flex-col gap-2.5">
+      <section id="dispatch-section" class="p-4 border-b border-hz-border flex flex-col gap-2.5">
         <h3 class="text-[10px] uppercase tracking-[0.12em] text-hz-muted">Job Dispatch</h3>
         <div class="flex flex-col gap-1">
           <label class="text-[10px] uppercase tracking-wide text-hz-muted">Queue</label>
@@ -230,7 +264,7 @@
     <main class="flex-1 flex flex-col overflow-hidden">
 
       <!-- Stats bar -->
-      <div class="flex bg-hz-surface border-b border-hz-border shrink-0">
+      <div id="stats-bar" class="flex bg-hz-surface border-b border-hz-border shrink-0">
         <div class="flex flex-col items-center px-5 py-3 border-r border-hz-border gap-0.5">
           <span id="stat-throughput" class="text-2xl font-bold text-violet-500 leading-none">0</span>
           <span class="text-[10px] uppercase tracking-widest text-hz-muted">jobs/sec</span>
@@ -621,6 +655,154 @@
           box.classList.remove('visible');
         });
       });
+    })();
+  </script>
+
+  <script>
+    (function initTour() {
+      const STEPS = [
+        {
+          target: null,
+          title: 'Welcome to Horizon Visualizer',
+          body: 'A sandbox for experimenting with Laravel Horizon configs before you touch production. Each step highlights one part of the UI — takes about a minute.',
+          pos: 'center',
+        },
+        {
+          target: '#add-supervisor',
+          title: 'Start here',
+          body: 'A supervisor watches a set of queues and manages the workers for them. Click "+ Add Supervisor" to create one. You\'ll configure its balance strategy, queue names, process limits, and more.',
+          pos: 'right',
+        },
+        {
+          target: '#dispatch-section',
+          title: 'Send jobs to a queue',
+          body: 'Once a supervisor is running, use this to push jobs into any of its queues. Dispatch a handful to start, or hit Burst to throw 50 at once and see how your config holds up under load.',
+          pos: 'right',
+        },
+        {
+          target: '#sim-speed',
+          title: 'Control simulation time',
+          body: 'Drag this to speed things up or slow them down. At 10× a 60-second timeout plays out in 6 real seconds — handy when you\'re testing retry delays or backoff sequences.',
+          pos: 'right',
+        },
+        {
+          target: '#stats-bar',
+          title: 'Watch it all here',
+          body: 'Throughput, pending jobs, active workers — all live. Below each supervisor, worker tiles show their exact state: processing, done, failed, resting between jobs, or sleeping while waiting for new ones.',
+          pos: 'bottom',
+        },
+      ];
+
+      let current = 0;
+      let spotlight = null;
+      let card = null;
+
+      function create() {
+        spotlight = document.createElement('div');
+        spotlight.id = 'tour-spotlight';
+        document.body.appendChild(spotlight);
+
+        card = document.createElement('div');
+        card.id = 'tour-card';
+        document.body.appendChild(card);
+      }
+
+      function destroy() {
+        spotlight?.remove(); spotlight = null;
+        card?.remove();      card = null;
+      }
+
+      function position(rect, pos) {
+        const GAP = 14;
+        const CW  = 296;
+
+        if (pos === 'center' || !rect) {
+          card.style.top       = '50%';
+          card.style.left      = '50%';
+          card.style.transform = 'translate(-50%, -50%)';
+          return;
+        }
+
+        card.style.transform = '';
+        const ch = card.offsetHeight;
+
+        if (pos === 'right') {
+          card.style.left = `${rect.right + GAP}px`;
+          const t = rect.top + rect.height / 2 - ch / 2;
+          card.style.top = `${Math.max(12, Math.min(t, window.innerHeight - ch - 12))}px`;
+        } else if (pos === 'bottom') {
+          card.style.top  = `${rect.bottom + GAP}px`;
+          const l = rect.left + rect.width / 2 - CW / 2;
+          card.style.left = `${Math.max(12, Math.min(l, window.innerWidth - CW - 12))}px`;
+        }
+      }
+
+      function show(step) {
+        const el   = step.target ? document.querySelector(step.target) : null;
+        const PAD  = 7;
+
+        if (el) {
+          const r = el.getBoundingClientRect();
+          spotlight.style.display = 'block';
+          spotlight.style.top     = `${r.top    - PAD}px`;
+          spotlight.style.left    = `${r.left   - PAD}px`;
+          spotlight.style.width   = `${r.width  + PAD * 2}px`;
+          spotlight.style.height  = `${r.height + PAD * 2}px`;
+        } else {
+          spotlight.style.display = 'none';
+        }
+
+        const isFirst = current === 0;
+        const isLast  = current === STEPS.length - 1;
+
+        const btnBase  = 'cursor:pointer;border-radius:7px;font-family:inherit;font-size:11px;font-weight:600;padding:6px 14px;transition:opacity .15s';
+        const btnPrev  = `${btnBase};background:transparent;border:1px solid var(--hz-border);color:var(--hz-muted)`;
+        const btnNext  = `${btnBase};background:#7c3aed;border:1px solid transparent;color:#fff`;
+
+        card.innerHTML = `
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <span style="font-size:10px;color:var(--hz-muted);letter-spacing:.1em;text-transform:uppercase;font-family:inherit">
+              ${current + 1} <span style="opacity:.4">/</span> ${STEPS.length}
+            </span>
+            <button id="t-skip" style="font-size:10px;color:var(--hz-muted);cursor:pointer;background:none;border:none;font-family:inherit;padding:0;opacity:.7">
+              skip tour
+            </button>
+          </div>
+          <div style="font-size:13px;font-weight:700;color:var(--hz-txt);margin-bottom:8px;font-family:inherit">${step.title}</div>
+          <div style="font-size:11px;color:var(--hz-muted);line-height:1.7;margin-bottom:18px;font-family:inherit">${step.body}</div>
+          <div style="display:flex;gap:8px;justify-content:flex-end;align-items:center">
+            ${!isFirst ? `<button id="t-prev" style="${btnPrev}">Back</button>` : ''}
+            <button id="t-next" style="${btnNext}">${isLast ? 'Done' : 'Next &rarr;'}</button>
+          </div>
+        `;
+
+        card.querySelector('#t-skip')?.addEventListener('click', finish);
+        card.querySelector('#t-prev')?.addEventListener('click', () => go(current - 1));
+        card.querySelector('#t-next')?.addEventListener('click', () => isLast ? finish() : go(current + 1));
+
+        requestAnimationFrame(() => position(el ? el.getBoundingClientRect() : null, step.pos));
+      }
+
+      function go(idx) {
+        current = idx;
+        show(STEPS[current]);
+      }
+
+      function finish() {
+        destroy();
+        localStorage.setItem('hz-tour-done', '1');
+      }
+
+      function start() {
+        if (spotlight) destroy();
+        current = 0;
+        create();
+        show(STEPS[0]);
+      }
+
+      document.getElementById('tour-replay').addEventListener('click', start);
+
+      if (!localStorage.getItem('hz-tour-done')) start();
     })();
   </script>
 </body>
