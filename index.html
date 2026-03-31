@@ -184,8 +184,15 @@
 <body class="bg-hz-bg text-hz-txt h-screen overflow-hidden">
   <div class="flex h-screen">
 
+    <!-- Mobile overlay backdrop -->
+    <div id="sidebar-backdrop" class="fixed inset-0 bg-black/50 z-30 hidden md:hidden" onclick="closeSidebar()"></div>
+
     <!-- Sidebar -->
-    <aside class="w-72 min-w-[288px] bg-hz-surface border-r border-hz-border flex flex-col overflow-y-auto">
+    <aside id="sidebar" class="
+      fixed inset-y-0 left-0 z-40 w-72 bg-hz-surface border-r border-hz-border flex flex-col overflow-y-auto
+      -translate-x-full transition-transform duration-200
+      md:relative md:translate-x-0 md:flex md:shrink-0
+    ">
 
       <div class="flex items-center justify-between px-4 py-4 border-b border-hz-border">
         <div class="flex items-center gap-2.5 text-violet-500 font-bold tracking-widest text-sm">
@@ -202,6 +209,11 @@
           <button id="theme-toggle" title="Toggle theme"
             class="w-8 h-8 flex items-center justify-center rounded-lg border border-hz-border hover:border-violet-500 text-hz-muted hover:text-violet-500 transition-colors cursor-pointer text-sm">
             <span id="theme-icon">&#9790;</span>
+          </button>
+          <!-- Close sidebar (mobile only) -->
+          <button onclick="closeSidebar()"
+            class="md:hidden w-8 h-8 flex items-center justify-center rounded-lg border border-hz-border text-hz-muted text-lg cursor-pointer">
+            &times;
           </button>
         </div>
       </div>
@@ -277,39 +289,51 @@
     </aside>
 
     <!-- Main -->
-    <main class="flex-1 flex flex-col overflow-hidden">
+    <main class="flex-1 flex flex-col overflow-hidden min-w-0">
+
+      <!-- Mobile top bar -->
+      <div class="md:hidden flex items-center justify-between px-4 py-3 bg-hz-surface border-b border-hz-border shrink-0">
+        <div class="flex items-center gap-2 text-violet-500 font-bold tracking-widest text-sm">
+          <span>&#9670;</span>
+          <span>Horizon Visualizer</span>
+        </div>
+        <button onclick="openSidebar()"
+          class="w-8 h-8 flex items-center justify-center rounded-lg border border-hz-border text-hz-muted cursor-pointer text-base">
+          &#9776;
+        </button>
+      </div>
 
       <!-- Stats bar -->
-      <div id="stats-bar" class="flex bg-hz-surface border-b border-hz-border shrink-0">
-        <div class="flex flex-col items-center px-5 py-3 border-r border-hz-border gap-0.5">
-          <span id="stat-throughput" class="text-2xl font-bold text-violet-500 leading-none">0</span>
+      <div id="stats-bar" class="grid grid-cols-3 md:flex bg-hz-surface border-b border-hz-border shrink-0">
+        <div class="flex flex-col items-center px-3 md:px-5 py-3 border-r border-b md:border-b-0 border-hz-border gap-0.5">
+          <span id="stat-throughput" class="text-xl md:text-2xl font-bold text-violet-500 leading-none">0</span>
           <span class="text-[10px] uppercase tracking-widest text-hz-muted">jobs/sec</span>
         </div>
-        <div class="flex flex-col items-center px-5 py-3 border-r border-hz-border gap-0.5">
-          <span id="stat-processed" class="text-2xl font-bold text-violet-500 leading-none">0</span>
+        <div class="flex flex-col items-center px-3 md:px-5 py-3 border-r border-b md:border-b-0 border-hz-border gap-0.5">
+          <span id="stat-processed" class="text-xl md:text-2xl font-bold text-violet-500 leading-none">0</span>
           <span class="text-[10px] uppercase tracking-widest text-hz-muted">processed</span>
         </div>
-        <div class="flex flex-col items-center px-5 py-3 border-r border-hz-border gap-0.5">
-          <span id="stat-retried" class="text-2xl font-bold text-violet-500 leading-none">0</span>
+        <div class="flex flex-col items-center px-3 md:px-5 py-3 border-b md:border-r md:border-b-0 border-hz-border gap-0.5">
+          <span id="stat-retried" class="text-xl md:text-2xl font-bold text-violet-500 leading-none">0</span>
           <span class="text-[10px] uppercase tracking-widest text-hz-muted">retried</span>
         </div>
-        <div class="flex flex-col items-center px-5 py-3 border-r border-hz-border gap-0.5">
-          <span id="stat-failed" class="text-2xl font-bold text-violet-500 leading-none">0</span>
+        <div class="flex flex-col items-center px-3 md:px-5 py-3 border-r border-hz-border gap-0.5">
+          <span id="stat-failed" class="text-xl md:text-2xl font-bold text-violet-500 leading-none">0</span>
           <span class="text-[10px] uppercase tracking-widest text-hz-muted">failed</span>
         </div>
-        <div class="flex flex-col items-center px-5 py-3 border-r border-hz-border gap-0.5">
-          <span id="stat-pending" class="text-2xl font-bold text-violet-500 leading-none">0</span>
+        <div class="flex flex-col items-center px-3 md:px-5 py-3 border-r border-hz-border gap-0.5">
+          <span id="stat-pending" class="text-xl md:text-2xl font-bold text-violet-500 leading-none">0</span>
           <span class="text-[10px] uppercase tracking-widest text-hz-muted">pending</span>
         </div>
-        <div class="flex flex-col items-center px-5 py-3 gap-0.5">
-          <span id="stat-workers" class="text-2xl font-bold text-violet-500 leading-none">0</span>
-          <span class="text-[10px] uppercase tracking-widest text-hz-muted">active workers</span>
+        <div class="flex flex-col items-center px-3 md:px-5 py-3 gap-0.5">
+          <span id="stat-workers" class="text-xl md:text-2xl font-bold text-violet-500 leading-none">0</span>
+          <span class="text-[10px] uppercase tracking-widest text-hz-muted">workers</span>
         </div>
       </div>
 
       <!-- Charts strip -->
-      <div class="flex shrink-0 border-b border-hz-border bg-hz-surface">
-        <div class="flex-1 flex flex-col px-4 pt-2.5 pb-2 border-r border-hz-border">
+      <div class="flex flex-col md:flex-row shrink-0 border-b border-hz-border bg-hz-surface">
+        <div class="flex-1 flex flex-col px-4 pt-2.5 pb-2 border-b md:border-b-0 md:border-r border-hz-border">
           <div class="flex justify-between items-center mb-1.5">
             <span class="text-[10px] uppercase tracking-widest text-hz-muted">Throughput</span>
             <span id="chart-tps-val" class="text-[11px] font-bold text-violet-500">0 jobs/s</span>
@@ -325,16 +349,16 @@
         </div>
       </div>
 
-      <div id="supervisors-view" class="flex-1 overflow-y-auto p-5 flex flex-col gap-5"></div>
+      <div id="supervisors-view" class="flex-1 overflow-y-auto p-3 md:p-5 flex flex-col gap-4 md:gap-5"></div>
 
     </main>
   </div>
 
   <!-- Modal -->
   <div id="modal-overlay"
-    class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 opacity-0 pointer-events-none transition-opacity duration-150">
+    class="fixed inset-0 bg-black/50 flex items-end md:items-center justify-center z-50 opacity-0 pointer-events-none transition-opacity duration-150">
     <div
-      class="bg-hz-surface border border-hz-border rounded-xl w-[460px] max-h-[90vh] overflow-y-auto flex flex-col shadow-2xl">
+      class="bg-hz-surface border border-hz-border md:rounded-xl w-full md:w-[460px] max-h-[92vh] md:max-h-[90vh] overflow-y-auto flex flex-col shadow-2xl rounded-t-2xl">
 
       <div class="flex items-center justify-between px-5 py-4 border-b border-hz-border">
         <h3 id="modal-title" class="text-sm font-bold text-hz-txt">Add Supervisor</h3>
@@ -680,6 +704,17 @@
         });
       });
     })();
+  </script>
+
+  <script>
+    function openSidebar() {
+      document.getElementById('sidebar').classList.remove('-translate-x-full');
+      document.getElementById('sidebar-backdrop').classList.remove('hidden');
+    }
+    function closeSidebar() {
+      document.getElementById('sidebar').classList.add('-translate-x-full');
+      document.getElementById('sidebar-backdrop').classList.add('hidden');
+    }
   </script>
 
   <script>
