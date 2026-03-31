@@ -6,6 +6,7 @@ const state = {
   speed: 5,
   stats: { processed: 0, failed: 0, retried: 0 },
   editingId: null,
+  autoDispatch: { enabled: false, rate: 5, _accums: new Map() },
 };
 
 let _id = 1;
@@ -132,13 +133,46 @@ let lastTick = performance.now();
 let simNow = 0;   // accumulated simulated milliseconds — speed-change-safe clock
 let throughputWindow = [];
 
+// ─── Chart history ────────────────────────────────────────────────────────────
+const CHART_POINTS = 120;
+const CHART_SAMPLE_MS = 250; // real ms between samples
+let lastSampleAt = 0;
+let tpsHistory     = new Array(CHART_POINTS).fill(0);
+let pendingHistory = new Array(CHART_POINTS).fill(0);
+
 function tick(now) {
   if (!state.running) { lastTick = now; return; }
   const deltaReal = now - lastTick;
   lastTick = now;
   simNow += deltaReal * state.speed;
 
+  // Auto-dispatch — spread rate evenly across every queue of every supervisor
+  const ad = state.autoDispatch;
+  if (ad.enabled && state.supervisors.length > 0) {
+    const allQueues = state.supervisors.flatMap(sv =>
+      sv.queues.map(q => ({ sv, q }))
+    );
+    for (const { sv, q } of allQueues) {
+      const key = `${sv.id}|${q.name}`;
+      const prev = ad._accums.get(key) || 0;
+      const next = prev + (deltaReal / 1000) * ad.rate;
+      const toDispatch = Math.floor(next);
+      ad._accums.set(key, next - toDispatch);
+      if (toDispatch > 0) q.pending.push(...Array.from({ length: toDispatch }, () => ({ id: uid(), attempts: 0 })));
+    }
+  }
+
   for (const sv of state.supervisors) tickSupervisor(sv, now);
+
+  // Sample chart history
+  if (now - lastSampleAt >= CHART_SAMPLE_MS) {
+    lastSampleAt = now;
+    const tps = Math.round(throughputWindow.length * state.speed);
+    const pending = state.supervisors.reduce((s, sv) =>
+      s + sv.queues.reduce((qs, q) => qs + q.pending.length, 0) + sv.retryPool.length, 0);
+    tpsHistory.push(tps);     tpsHistory.shift();
+    pendingHistory.push(pending); pendingHistory.shift();
+  }
 
   updateStats(now);
   render();
@@ -365,6 +399,70 @@ function assignWorkerToJob(worker, queue) {
   worker._lastEmptyAt = null;
 }
 
+// ─── Charts ──────────────────────────────────────────────────────────────────
+
+function drawChart(canvas, data, color) {
+  const dpr = window.devicePixelRatio || 1;
+  const W   = canvas.offsetWidth;
+  const H   = canvas.offsetHeight;
+  if (!W || !H) return;
+
+  canvas.width  = W * dpr;
+  canvas.height = H * dpr;
+
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  const max = Math.max(...data, 1);
+  const n   = data.length;
+  const xStep = W / (n - 1);
+
+  const px = (i) => i * xStep;
+  const py = (v) => H - (v / max) * H * 0.88 - 2;
+
+  // Filled area
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, color + '50');
+  grad.addColorStop(1, color + '08');
+
+  ctx.beginPath();
+  ctx.moveTo(px(0), H);
+  data.forEach((v, i) => ctx.lineTo(px(i), py(v)));
+  ctx.lineTo(px(n - 1), H);
+  ctx.closePath();
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Line
+  ctx.beginPath();
+  data.forEach((v, i) => i === 0 ? ctx.moveTo(px(i), py(v)) : ctx.lineTo(px(i), py(v)));
+  ctx.strokeStyle = color;
+  ctx.lineWidth   = 1.5;
+  ctx.lineJoin    = 'round';
+  ctx.stroke();
+
+  // Current value dot
+  const lastV = data[n - 1];
+  if (lastV > 0) {
+    ctx.beginPath();
+    ctx.arc(px(n - 1), py(lastV), 2.5, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+  }
+}
+
+function drawCharts() {
+  const tps     = Math.round(throughputWindow.length * state.speed);
+  const pending = state.supervisors.reduce((s, sv) =>
+    s + sv.queues.reduce((qs, q) => qs + q.pending.length, 0) + sv.retryPool.length, 0);
+
+  document.getElementById('chart-tps-val').textContent     = `${tps} jobs/s`;
+  document.getElementById('chart-pending-val').textContent = `${pending} pending`;
+
+  drawChart(document.getElementById('chart-tps'),     tpsHistory,     '#7c3aed');
+  drawChart(document.getElementById('chart-pending'), pendingHistory, '#06b6d4');
+}
+
 // ─── Stats ───────────────────────────────────────────────────────────────────
 
 function updateStats(now) {
@@ -387,6 +485,7 @@ function updateStats(now) {
 // ─── Render ───────────────────────────────────────────────────────────────────
 
 function render() {
+  drawCharts();
   const container = document.getElementById('supervisors-view');
 
   if (state.supervisors.length === 0) {
@@ -819,12 +918,28 @@ function init() {
   document.getElementById('sim-reset').addEventListener('click', () => {
     state.stats = { processed: 0, failed: 0, retried: 0 };
     throughputWindow.length = 0;
+    tpsHistory.fill(0);
+    pendingHistory.fill(0);
     for (const sv of state.supervisors) {
       sv.retryPool = [];
       sv._lastBalanceAt = null;
       for (const q of sv.queues) { q.pending = []; q.processed = 0; q.failed = 0; }
       sv.workers = buildWorkersForSupervisor(sv);
     }
+  });
+
+  // Auto-dispatch
+  const adToggle = document.getElementById('auto-dispatch-toggle');
+  document.getElementById('auto-dispatch-rate').addEventListener('input', e => {
+    state.autoDispatch.rate = parseFloat(e.target.value) || 1;
+  });
+  adToggle.addEventListener('click', () => {
+    state.autoDispatch.enabled = !state.autoDispatch.enabled;
+    state.autoDispatch._accums.clear();
+    adToggle.textContent = state.autoDispatch.enabled ? 'On' : 'Off';
+    adToggle.style.borderColor  = state.autoDispatch.enabled ? '#7c3aed' : '';
+    adToggle.style.color        = state.autoDispatch.enabled ? '#7c3aed' : '';
+    adToggle.style.background   = state.autoDispatch.enabled ? '#7c3aed18' : '';
   });
 
   document.getElementById('theme-toggle').addEventListener('click', toggleTheme);

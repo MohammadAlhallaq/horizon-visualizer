@@ -237,6 +237,22 @@
           class="px-3 py-1.5 border border-hz-border hover:border-violet-500 hover:text-violet-500 text-hz-muted text-xs font-semibold rounded-lg cursor-pointer transition-colors">
           Burst (50)
         </button>
+
+        <!-- Auto-dispatch -->
+        <div class="border-t border-hz-border pt-2.5 flex flex-col gap-2">
+          <div class="flex items-center justify-between">
+            <span class="text-[10px] uppercase tracking-wide text-hz-muted">Auto-dispatch</span>
+            <button id="auto-dispatch-toggle"
+              class="text-[10px] font-semibold px-2.5 py-1 rounded-md border border-hz-border text-hz-muted cursor-pointer transition-colors">
+              Off
+            </button>
+          </div>
+          <div class="flex items-center gap-2">
+            <input type="number" id="auto-dispatch-rate" value="5" min="1" max="200"
+              class="flex-1 bg-hz-surface2 border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
+            <span class="text-[10px] text-hz-muted whitespace-nowrap">jobs / sec</span>
+          </div>
+        </div>
       </section>
 
       <!-- Simulation -->
@@ -288,6 +304,24 @@
         <div class="flex flex-col items-center px-5 py-3 gap-0.5">
           <span id="stat-workers" class="text-2xl font-bold text-violet-500 leading-none">0</span>
           <span class="text-[10px] uppercase tracking-widest text-hz-muted">active workers</span>
+        </div>
+      </div>
+
+      <!-- Charts strip -->
+      <div class="flex shrink-0 border-b border-hz-border bg-hz-surface">
+        <div class="flex-1 flex flex-col px-4 pt-2.5 pb-2 border-r border-hz-border">
+          <div class="flex justify-between items-center mb-1.5">
+            <span class="text-[10px] uppercase tracking-widest text-hz-muted">Throughput</span>
+            <span id="chart-tps-val" class="text-[11px] font-bold text-violet-500">0 jobs/s</span>
+          </div>
+          <canvas id="chart-tps" height="48" style="width:100%;display:block"></canvas>
+        </div>
+        <div class="flex-1 flex flex-col px-4 pt-2.5 pb-2">
+          <div class="flex justify-between items-center mb-1.5">
+            <span class="text-[10px] uppercase tracking-widest text-hz-muted">Queue Depth</span>
+            <span id="chart-pending-val" class="text-[11px] font-bold text-cyan-500">0 pending</span>
+          </div>
+          <canvas id="chart-pending" height="48" style="width:100%;display:block"></canvas>
         </div>
       </div>
 
@@ -676,7 +710,7 @@
         {
           target: '#dispatch-section',
           title: 'Send jobs to a queue',
-          body: 'Once a supervisor is running, use this to push jobs into any of its queues. Dispatch a handful to start, or hit Burst to throw 50 at once and see how your config holds up under load.',
+          body: 'Push jobs into any queue manually, or turn on Auto-dispatch to keep a steady flow going at a set rate (jobs/sec). A constant inflow is more realistic than a one-off burst — it lets you find the steady state of your config.',
           pos: 'right',
         },
         {
@@ -688,7 +722,7 @@
         {
           target: '#stats-bar',
           title: 'Watch it all here',
-          body: 'Throughput, pending jobs, active workers — all live. Below each supervisor, worker tiles show their exact state: processing, done, failed, resting between jobs, or sleeping while waiting for new ones.',
+          body: 'Numbers at a glance, and below them live sparklines for throughput and queue depth over time. The charts make it easy to see whether a config change helped — is the queue draining, holding steady, or growing?',
           pos: 'bottom',
         },
       ];
