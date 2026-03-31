@@ -43,25 +43,31 @@ function makeWorker(index, assignedQueue = null, bornAt = null) {
 }
 
 function buildWorkersForSupervisor(sv) {
+  const numQueues = sv.queues.length;
+
   if (sv.balance === 'simple') {
-    // Evenly split processes across queues (first queues get remainder)
+    // processes total, split evenly across queues (queue-dedicated, no scaling)
+    // e.g. 2 queues, 10 processes → [5, 5] | 3 queues, 10 → [4, 3, 3]
+    const total  = Math.max(numQueues, sv.processes);
+    const base   = Math.floor(total / numQueues);
+    const rem    = total % numQueues;
     const workers = [];
-    const n = sv.queues.length;
     let wi = 0;
     sv.queues.forEach((q, qi) => {
-      const base = Math.floor(sv.processes / n);
-      const count = base + (qi < sv.processes % n ? 1 : 0);
-      for (let i = 0; i < count; i++) {
-        workers.push(makeWorker(wi++, q.name));
-      }
+      const count = base + (qi < rem ? 1 : 0);
+      for (let i = 0; i < count; i++) workers.push(makeWorker(wi++, q.name));
     });
     return workers;
   }
-  // auto / false: shared pool starting at minProcesses total
-  const startCount = sv.balance === 'auto'
-    ? sv.minProcesses * sv.queues.length
-    : sv.minProcesses;
-  return Array.from({ length: Math.max(1, startCount) }, (_, i) => makeWorker(i));
+
+  if (sv.balance === 'auto') {
+    // minProcesses per queue as starting pool (shared, not queue-dedicated)
+    const total = Math.max(numQueues, sv.minProcesses * numQueues);
+    return Array.from({ length: total }, (_, i) => makeWorker(i));
+  }
+
+  // false: starts at minProcesses total, scales up to maxProcesses, strict queue priority
+  return Array.from({ length: Math.max(1, sv.minProcesses) }, (_, i) => makeWorker(i));
 }
 
 function createSupervisor(opts = {}) {
@@ -81,7 +87,7 @@ function createSupervisor(opts = {}) {
     balance,
     // simple
     processes: opts.processes || 4,
-    // auto & false
+    // auto: min per queue, max total | false: min total, max total
     minProcesses: opts.minProcesses || 1,
     maxProcesses: opts.maxProcesses || 10,
     // auto only
@@ -265,7 +271,7 @@ function tickSupervisor(sv, now) {
     }
   }
 
-  // Scale workers (auto and false balance)
+  // auto and false both scale; simple is fixed
   if (sv.balance !== 'simple') scaleWorkers(sv);
 
   // Assign work to idle workers
@@ -284,20 +290,18 @@ function scaleWorkers(sv) {
   let target;
 
   if (sv.balance === 'auto') {
-    // minProcesses = per queue, maxProcesses = total
+    // min = minProcesses per queue, max = maxProcesses total
     const minTotal = sv.minProcesses * numQueues;
-
     if (sv.autoScalingStrategy === 'size') {
       const totalPending = sv.queues.reduce((s, q) => s + q.pending.length, 0);
       target = clamp(totalPending + busyCount, minTotal, sv.maxProcesses);
     } else {
-      // time: scale proportionally to queue with most jobs * runtime
       const maxQueueJobs = Math.max(...sv.queues.map(q => q.pending.length));
       const needWorkers = Math.ceil(maxQueueJobs / Math.max(1, sv.jobRuntime / 1000));
       target = clamp(needWorkers + busyCount, minTotal, sv.maxProcesses);
     }
   } else {
-    // balance: false — minProcesses/maxProcesses are TOTAL
+    // false: min and max are both total worker counts
     const totalPending = sv.queues.reduce((s, q) => s + q.pending.length, 0);
     target = clamp(totalPending + busyCount, sv.minProcesses, sv.maxProcesses);
   }
@@ -521,8 +525,8 @@ function renderSupervisorCard(card, sv) {
   const strategyLabel = sv.balance === 'auto'
     ? `auto · ${sv.autoScalingStrategy}`
     : sv.balance === 'simple'
-      ? `simple · ${sv.processes} proc`
-      : `priority`;
+      ? `simple · ${Math.max(sv.queues.length, sv.processes)} proc`
+      : `no balance`;
 
   let header = card.querySelector('[data-role="sv-header"]');
   if (!header) { header = document.createElement('div'); header.dataset.role = 'sv-header'; header.className = 'flex items-center justify-between px-4 py-3 border-b border-hz-border bg-hz-surface2'; card.appendChild(header); }
@@ -613,10 +617,10 @@ function renderWorkers(section, sv) {
   ].filter(Boolean).join(' · ');
 
   const hint = (sv.balance === 'simple'
-    ? 'queue-dedicated · no scaling'
+    ? `${Math.max(sv.queues.length, sv.processes)} total · queue-dedicated · no scaling`
     : sv.balance === 'auto'
       ? `min ${sv.minProcesses}/queue · max ${sv.maxProcesses} total · shift ${sv.balanceMaxShift}`
-      : `min ${sv.minProcesses} · max ${sv.maxProcesses} total · strict priority`)
+      : `strict priority · min ${sv.minProcesses} · max ${sv.maxProcesses} total`)
     + (lifecycleHint ? ` · ${lifecycleHint}` : '');
 
   section.innerHTML = `
@@ -741,11 +745,10 @@ function openAddModal() {
   document.getElementById('sv-max-processes').value = 10;
   document.getElementById('sv-balance-max-shift').value = 1;
   document.getElementById('sv-balance-cooldown').value = 3;
-  document.getElementById('sv-processes').value = 4;
+  document.getElementById('sv-processes').value = 5;
+  document.getElementById('sv-simple-processes').value = 10;
   document.getElementById('sv-false-min-processes').value = 1;
   document.getElementById('sv-false-max-processes').value = 10;
-  document.getElementById('sv-false-balance-max-shift').value = 1;
-  document.getElementById('sv-false-balance-cooldown').value = 3;
   document.getElementById('sv-job-runtime').value = 800;
   document.getElementById('sv-failure-rate').value = 5;
   document.getElementById('sv-tries').value = 1;
@@ -774,10 +777,9 @@ function openEditModal(id) {
   document.getElementById('sv-balance-max-shift').value = sv.balanceMaxShift;
   document.getElementById('sv-balance-cooldown').value = sv.balanceCooldown;
   document.getElementById('sv-processes').value = sv.processes;
+  document.getElementById('sv-simple-processes').value = sv.processes;
   document.getElementById('sv-false-min-processes').value = sv.minProcesses;
   document.getElementById('sv-false-max-processes').value = sv.maxProcesses;
-  document.getElementById('sv-false-balance-max-shift').value = sv.balanceMaxShift;
-  document.getElementById('sv-false-balance-cooldown').value = sv.balanceCooldown;
   document.getElementById('sv-job-runtime').value = sv.jobRuntime;
   document.getElementById('sv-failure-rate').value = sv.failureRate;
   document.getElementById('sv-tries').value = sv.tries;
@@ -805,35 +807,29 @@ function saveModal() {
   const backoffRaw = document.getElementById('sv-backoff').value;
   const backoff = backoffRaw.split(',').map(s => parseFloat(s.trim())).filter(n => !isNaN(n));
 
-  const isAuto = balance === 'auto';
-  const isFalse = balance === 'false';
+  const isAuto   = balance === 'auto';
 
   const opts = {
     name: document.getElementById('sv-name').value.trim() || 'supervisor',
     queues: queueNames,
     balance,
     autoScalingStrategy: document.getElementById('sv-autoscaling').value,
-    processes: parseInt(document.getElementById('sv-processes').value) || 4,
+    processes: balance === 'simple'
+      ? parseInt(document.getElementById('sv-simple-processes').value) || 10
+      : parseInt(document.getElementById('sv-processes').value) || 5,
     minProcesses: isAuto
       ? parseInt(document.getElementById('sv-min-processes').value) || 1
-      : isFalse
+      : balance === 'false'
         ? parseInt(document.getElementById('sv-false-min-processes').value) || 1
         : 1,
     maxProcesses: isAuto
       ? parseInt(document.getElementById('sv-max-processes').value) || 10
-      : isFalse
+      : balance === 'false'
         ? parseInt(document.getElementById('sv-false-max-processes').value) || 10
         : 10,
-    balanceMaxShift: isAuto
-      ? parseInt(document.getElementById('sv-balance-max-shift').value) || 1
-      : isFalse
-        ? parseInt(document.getElementById('sv-false-balance-max-shift').value) || 1
-        : 1,
-    balanceCooldown: isAuto
-      ? parseInt(document.getElementById('sv-balance-cooldown').value) || 3
-      : isFalse
-        ? parseInt(document.getElementById('sv-false-balance-cooldown').value) || 3
-        : 3,
+    // auto only
+    balanceMaxShift: isAuto ? parseInt(document.getElementById('sv-balance-max-shift').value) || 1 : 1,
+    balanceCooldown: isAuto ? parseInt(document.getElementById('sv-balance-cooldown').value) || 3 : 3,
     jobRuntime: parseInt(document.getElementById('sv-job-runtime').value) || 800,
     failureRate: parseFloat(document.getElementById('sv-failure-rate').value) || 0,
     tries: parseInt(document.getElementById('sv-tries').value) || 1,

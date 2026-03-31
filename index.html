@@ -375,8 +375,8 @@
           <select id="sv-balance"
             class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors">
             <option value="auto">auto — dynamic scaling per queue load</option>
-            <option value="simple">simple — fixed processes split evenly</option>
-            <option value="false">false — strict queue priority, can scale</option>
+            <option value="simple">simple — fixed workers per queue, no scaling</option>
+            <option value="false">false — no balance, all workers on highest priority queue</option>
           </select>
 
           <!-- auto -->
@@ -393,6 +393,14 @@
               </select>
             </div>
             <div class="grid grid-cols-2 gap-2">
+              <div class="flex flex-col gap-1">
+                <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
+                  Processes
+                  <span class="tip-icon" data-tip-id="processes-auto">ⓘ</span>
+                </label>
+                <input type="number" id="sv-processes" value="5" min="1" max="50"
+                  class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
+              </div>
               <div class="flex flex-col gap-1">
                 <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
                   Min Processes
@@ -435,7 +443,7 @@
                 Processes
                 <span class="tip-icon" data-tip-id="processes-simple">ⓘ</span>
               </label>
-              <input type="number" id="sv-processes" value="4" min="1" max="50"
+              <input type="number" id="sv-simple-processes" value="5" min="1" max="50"
                 class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
             </div>
           </div>
@@ -457,22 +465,6 @@
                   <span class="tip-icon" data-tip-id="max-processes-false">ⓘ</span>
                 </label>
                 <input type="number" id="sv-false-max-processes" value="10" min="1" max="50"
-                  class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
-              </div>
-              <div class="flex flex-col gap-1">
-                <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
-                  Balance Max Shift
-                  <span class="tip-icon" data-tip-id="max-shift-false">ⓘ</span>
-                </label>
-                <input type="number" id="sv-false-balance-max-shift" value="1" min="1" max="10"
-                  class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
-              </div>
-              <div class="flex flex-col gap-1">
-                <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
-                  Balance Cooldown
-                  <span class="tip-icon" data-tip-id="cooldown-false">ⓘ</span>
-                </label>
-                <input type="number" id="sv-false-balance-cooldown" value="3" min="1" max="30"
                   class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
               </div>
             </div>
@@ -594,27 +586,25 @@
     const TIPS = {
       queues: `Comma-separated queue names processed by this supervisor. For <strong>false</strong> balance, order is strict priority — the first queue is always fully drained before the second. For <strong>auto</strong>, order has no effect; workers are allocated dynamically by load.`,
 
-      balance: `<strong>auto</strong> — dynamically scales workers per queue based on workload. Does not enforce queue priority.<br><br><strong>simple</strong> — fixed total processes split evenly. Workers are queue-dedicated, no scaling.<br><br><strong>false</strong> — strict queue priority order. Workers drain queue #1 before touching queue #2. Can still scale with min/max.`,
+      balance: `<strong>auto</strong> — scales workers dynamically per queue load. <code>minProcesses</code> = min per queue, <code>maxProcesses</code> = total ceiling. No strict queue priority — workers are assigned by workload.<br><br><strong>simple</strong> — fixed total processes split evenly across queues. Workers are queue-dedicated, no scaling. E.g. 10 processes ÷ 2 queues = 5 each.<br><br><strong>false</strong> — strict queue priority. All workers drain Queue 1 before touching Queue 2. Still scales between <code>minProcesses</code> and <code>maxProcesses</code> total.`,
 
       autoscaling: `<strong>size</strong> — assigns workers based on the total number of jobs on each queue.<br><br><strong>time</strong> — assigns based on estimated time to clear the queue (job count × avg runtime). Favors queues with slower, backlogged jobs.`,
 
-      'min-processes-auto': `Minimum worker processes <strong>per queue</strong>. Must be ≥ 1. With 2 queues and minProcesses=1, Horizon maintains at least 2 workers total even when queues are empty.`,
+      'processes-auto': `Starting total worker processes (shared pool, not queue-dedicated). Horizon uses this as the initial count before scaling kicks in.`,
 
-      'max-processes-auto': `Maximum <strong>total</strong> worker processes across all queues. Horizon will not spawn beyond this regardless of load. Set to 0 to prevent spawning any processes.`,
+      'min-processes-auto': `Minimum worker processes <strong>per queue</strong>. Horizon guarantees at least this many workers are assigned to each queue at all times, even when the queue is empty. Must be ≥ 1.`,
+
+      'max-processes-auto': `Maximum <strong>total</strong> workers across all queues. Should typically be greater than <code>numQueues × minProcesses</code> — otherwise there are no excess workers to move around and auto-scaling has no effect.`,
 
       'max-shift': `Max processes added or destroyed per cooldown period (<code>balanceMaxShift</code>). Lower = smoother scaling. Higher = faster reaction to load spikes.`,
 
       cooldown: `Seconds between balance adjustments (<code>balanceCooldown</code>). Horizon waits this long before scaling up or down again. Prevents thrashing under bursty load.`,
 
-      'processes-simple': `Total fixed worker processes split evenly across queues. E.g., 4 processes ÷ 2 queues = 2 dedicated workers each. Workers are queue-locked — they only pick jobs from their assigned queue. <strong>No auto-scaling.</strong>`,
+      'processes-simple': `Total worker processes split evenly across queues. E.g. 10 processes ÷ 2 queues = 5 each. Each worker is queue-dedicated — it only picks jobs from its assigned queue. <strong>No auto-scaling.</strong>`,
 
-      'min-processes-false': `Minimum <strong>total</strong> worker processes (not per-queue, unlike auto). Horizon maintains at least this many workers at all times.`,
+      'min-processes-false': `Minimum total worker processes. Horizon will always maintain at least this many workers regardless of queue depth.`,
 
-      'max-processes-false': `Maximum <strong>total</strong> workers Horizon can scale to when jobs accumulate. Workers still process queues in strict priority order.`,
-
-      'max-shift-false': `Max processes added or removed per cooldown period. Controls how aggressively Horizon scales under accumulating load.`,
-
-      'cooldown-false': `Seconds between scaling adjustments. Prevents Horizon from thrashing workers up and down under bursty traffic.`,
+      'max-processes-false': `Maximum total worker processes. Unlike <strong>simple</strong>, Horizon will scale up to this number as jobs accumulate, then scale back down. All workers still process queues in strict priority order.`,
 
       runtime: `Simulated job execution time in milliseconds. In real Horizon this varies per job class. Used by the <strong>time</strong> auto-scaling strategy to estimate queue clear time.`,
 
