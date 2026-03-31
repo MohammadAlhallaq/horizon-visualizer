@@ -33,10 +33,10 @@ function makeWorker(index, assignedQueue = null, bornAt = null) {
     _job: null,
     _startReal: null,
     _flashAt: null,
-    _idleSince: null,    // real ms when became idle (for rest)
-    _lastEmptyAt: null,  // real ms when last found queue empty (for sleep)
+    _idleSince: null,    // sim ms when became idle (for rest)
+    _lastEmptyAt: null,  // sim ms when last found queue empty (for sleep)
     _jobsProcessed: 0,   // jobs completed (for maxJobs recycling)
-    _bornAt: bornAt !== null ? bornAt : performance.now(), // for maxTime recycling
+    _bornAt: bornAt !== null ? bornAt : simNow, // for maxTime recycling (sim time)
     _recycle: false,     // flag: replace with fresh worker after current job
   };
 }
@@ -129,11 +129,14 @@ function dispatchToQueue(value, count) {
 // ─── Tick ────────────────────────────────────────────────────────────────────
 
 let lastTick = performance.now();
+let simNow = 0;   // accumulated simulated milliseconds — speed-change-safe clock
 let throughputWindow = [];
 
 function tick(now) {
   if (!state.running) { lastTick = now; return; }
+  const deltaReal = now - lastTick;
   lastTick = now;
+  simNow += deltaReal * state.speed;
 
   for (const sv of state.supervisors) tickSupervisor(sv, now);
 
@@ -142,10 +145,10 @@ function tick(now) {
 }
 
 function tickSupervisor(sv, now) {
-  // Move retry jobs back to queue when their backoff expires
+  // Move retry jobs back to queue when their backoff expires (sim time)
   for (let i = sv.retryPool.length - 1; i >= 0; i--) {
     const entry = sv.retryPool[i];
-    if (now >= entry.retryAt) {
+    if (simNow >= entry.retryAt) {
       const q = sv.queues.find(q => q.name === entry.queueName);
       if (q) q.pending.unshift(entry.job); // high priority — front of queue
       sv.retryPool.splice(i, 1);
@@ -156,7 +159,7 @@ function tickSupervisor(sv, now) {
   for (const worker of sv.workers) {
     if (worker.state !== 'busy') continue;
 
-    const elapsed = now * state.speed - worker._startReal;
+    const elapsed = simNow - worker._startReal;
     const timeoutElapsed = elapsed >= sv.timeout * 1000;
     const runtimeElapsed = elapsed >= sv.jobRuntime;
 
@@ -171,8 +174,7 @@ function tickSupervisor(sv, now) {
         const backoffSec = Array.isArray(sv.backoff)
           ? (sv.backoff[job.attempts] ?? sv.backoff[sv.backoff.length - 1])
           : sv.backoff;
-        const backoffReal = (backoffSec * 1000) / state.speed;
-        sv.retryPool.push({ job: { ...job, attempts: job.attempts + 1 }, queueName: worker.queue, retryAt: now + backoffReal });
+        sv.retryPool.push({ job: { ...job, attempts: job.attempts + 1 }, queueName: worker.queue, retryAt: simNow + backoffSec * 1000 });
         state.stats.retried++;
         worker.state = 'failed'; // show failed flash before retry
       } else if (failed) {
@@ -193,7 +195,7 @@ function tickSupervisor(sv, now) {
       // Flag for recycling if maxJobs or maxTime exceeded
       if (!worker._recycle) {
         if (sv.maxJobs > 0 && worker._jobsProcessed >= sv.maxJobs) worker._recycle = true;
-        if (sv.maxTime > 0 && (now - worker._bornAt) * state.speed >= sv.maxTime * 1000) worker._recycle = true;
+        if (sv.maxTime > 0 && simNow - worker._bornAt >= sv.maxTime * 1000) worker._recycle = true;
       }
 
       worker._flashAt = now;
@@ -207,13 +209,13 @@ function tickSupervisor(sv, now) {
     if ((worker.state === 'done' || worker.state === 'failed') && worker._flashAt) {
       if (now - worker._flashAt > 350 / state.speed) {
         if (worker._recycle) {
-          sv.workers[i] = makeWorker(worker.index, worker.assignedQueue, now);
+          sv.workers[i] = makeWorker(worker.index, worker.assignedQueue, simNow);
         } else {
           worker.state = 'idle';
           worker.queue = null;
           worker.progress = 0;
           worker._flashAt = null;
-          worker._idleSince = now;
+          worker._idleSince = simNow;
         }
       }
     }
@@ -223,26 +225,25 @@ function tickSupervisor(sv, now) {
   if (sv.maxTime > 0) {
     for (let i = sv.workers.length - 1; i >= 0; i--) {
       const w = sv.workers[i];
-      if (w.state === 'idle' && (now - w._bornAt) * state.speed >= sv.maxTime * 1000) {
-        sv.workers[i] = makeWorker(w.index, w.assignedQueue, now);
+      if (w.state === 'idle' && simNow - w._bornAt >= sv.maxTime * 1000) {
+        sv.workers[i] = makeWorker(w.index, w.assignedQueue, simNow);
       }
     }
   }
 
   // Scale workers (auto and false balance)
-  if (sv.balance !== 'simple') scaleWorkers(sv, now);
+  if (sv.balance !== 'simple') scaleWorkers(sv);
 
   // Assign work to idle workers
-  assignWork(sv, now);
+  assignWork(sv);
 }
 
 // ─── Scaling ─────────────────────────────────────────────────────────────────
 
-function scaleWorkers(sv, now) {
-  // Respect balanceCooldown
-  const cooldownReal = (sv.balanceCooldown * 1000) / state.speed;
-  if (sv._lastBalanceAt !== null && now - sv._lastBalanceAt < cooldownReal) return;
-  sv._lastBalanceAt = now;
+function scaleWorkers(sv) {
+  // Respect balanceCooldown (sim time)
+  if (sv._lastBalanceAt !== null && simNow - sv._lastBalanceAt < sv.balanceCooldown * 1000) return;
+  sv._lastBalanceAt = simNow;
 
   const busyCount = sv.workers.filter(w => w.state === 'busy').length;
   const numQueues = sv.queues.length;
@@ -272,7 +273,7 @@ function scaleWorkers(sv, now) {
   const shift = Math.min(sv.balanceMaxShift, Math.abs(diff));
 
   if (diff > 0) {
-    for (let i = 0; i < shift; i++) sv.workers.push(makeWorker(sv.workers.length, null, now));
+    for (let i = 0; i < shift; i++) sv.workers.push(makeWorker(sv.workers.length, null, simNow));
   } else if (diff < 0) {
     let removed = 0;
     for (let i = sv.workers.length - 1; i >= 0 && removed < shift; i--) {
@@ -285,24 +286,24 @@ function clamp(val, min, max) { return Math.max(min, Math.min(max, val)); }
 
 // ─── Work Assignment ─────────────────────────────────────────────────────────
 
-function isWorkerAvailable(worker, sv, now) {
+function isWorkerAvailable(worker, sv) {
   if (worker.state !== 'idle') return false;
-  // rest: mandatory idle period after each job
+  // rest: mandatory idle period after each job (sim time)
   if (sv.rest > 0 && worker._idleSince !== null &&
-      (now - worker._idleSince) * state.speed < sv.rest * 1000) return false;
-  // sleep: poll interval after finding queue empty
+      simNow - worker._idleSince < sv.rest * 1000) return false;
+  // sleep: poll interval after finding queue empty (sim time)
   if (sv.sleep > 0 && worker._lastEmptyAt !== null &&
-      (now - worker._lastEmptyAt) * state.speed < sv.sleep * 1000) return false;
+      simNow - worker._lastEmptyAt < sv.sleep * 1000) return false;
   return true;
 }
 
-function assignWork(sv, now) {
-  if (sv.balance === 'auto') return assignAuto(sv, now);
-  if (sv.balance === 'simple') return assignSimple(sv, now);
-  /* false */                  return assignPriority(sv, now);
+function assignWork(sv) {
+  if (sv.balance === 'auto') return assignAuto(sv);
+  if (sv.balance === 'simple') return assignSimple(sv);
+  /* false */                  return assignPriority(sv);
 }
 
-function assignAuto(sv, now) {
+function assignAuto(sv) {
   // Docs: does NOT enforce strict queue priority — assigns by load
   const sortedQueues = [...sv.queues].sort((a, b) => {
     if (sv.autoScalingStrategy === 'time') {
@@ -312,52 +313,52 @@ function assignAuto(sv, now) {
   });
 
   for (const worker of sv.workers) {
-    if (!isWorkerAvailable(worker, sv, now)) continue;
+    if (!isWorkerAvailable(worker, sv)) continue;
     const q = sortedQueues.find(q => q.pending.length > 0);
-    if (!q) { worker._lastEmptyAt = now; break; }
-    assignWorkerToJob(worker, q, now);
+    if (!q) { worker._lastEmptyAt = simNow; continue; }
+    assignWorkerToJob(worker, q);
   }
 }
 
-function assignSimple(sv, now) {
+function assignSimple(sv) {
   // Workers are locked to their assigned queue
   for (const worker of sv.workers) {
-    if (!isWorkerAvailable(worker, sv, now)) continue;
+    if (!isWorkerAvailable(worker, sv)) continue;
     const q = sv.queues.find(q => q.name === worker.assignedQueue);
     if (!q) continue;
     if (q.pending.length > 0) {
-      assignWorkerToJob(worker, q, now);
+      assignWorkerToJob(worker, q);
     } else {
-      worker._lastEmptyAt = now;
+      worker._lastEmptyAt = simNow;
     }
   }
 }
 
-function assignPriority(sv, now) {
+function assignPriority(sv) {
   // Docs: strict queue order — first queue always processed first
   // Workers only move to next queue when higher-priority queue is empty
   for (const worker of sv.workers) {
-    if (!isWorkerAvailable(worker, sv, now)) continue;
+    if (!isWorkerAvailable(worker, sv)) continue;
     let assigned = false;
     for (const q of sv.queues) {
       if (q.pending.length > 0) {
-        assignWorkerToJob(worker, q, now);
+        assignWorkerToJob(worker, q);
         assigned = true;
         break;
       }
     }
-    if (!assigned) { worker._lastEmptyAt = now; break; }
+    if (!assigned) { worker._lastEmptyAt = simNow; continue; }
   }
 }
 
-function assignWorkerToJob(worker, queue, now) {
+function assignWorkerToJob(worker, queue) {
   const job = queue.pending.shift();
   if (!job) return;
   worker.state = 'busy';
   worker.queue = queue.name;
   worker.jobId = job.id;
   worker.progress = 0;
-  worker._startReal = now * state.speed;
+  worker._startReal = simNow;
   worker._flashAt = null;
   worker._job = { ...job, attempts: job.attempts + 1 };
   worker._idleSince = null;
@@ -533,20 +534,18 @@ function renderWorkers(section, sv) {
 }
 
 function renderWorker(w, sv) {
-  const now = performance.now();
-
-  // Rest: mandatory idle period after job completion
+  // Rest: mandatory idle period after job completion (sim time)
   const inRest = w.state === 'idle' && sv.rest > 0 && w._idleSince !== null &&
-    (now - w._idleSince) * state.speed < sv.rest * 1000;
+    simNow - w._idleSince < sv.rest * 1000;
 
   // Sleep: poll delay after finding queue empty (only when not already in rest)
   const inSleep = !inRest && w.state === 'idle' && sv.sleep > 0 && w._lastEmptyAt !== null &&
-    (now - w._lastEmptyAt) * state.speed < sv.sleep * 1000;
+    simNow - w._lastEmptyAt < sv.sleep * 1000;
 
-  const restProgress  = inRest  ? Math.max(0, 1 - (now - w._idleSince)   * state.speed / (sv.rest  * 1000)) : 0;
-  const sleepProgress = inSleep ? Math.max(0, 1 - (now - w._lastEmptyAt) * state.speed / (sv.sleep * 1000)) : 0;
-  const restRemain    = inRest  ? Math.max(0, Math.ceil((sv.rest  * 1000 - (now - w._idleSince)   * state.speed) / 1000)) : 0;
-  const sleepRemain   = inSleep ? Math.max(0, Math.ceil((sv.sleep * 1000 - (now - w._lastEmptyAt) * state.speed) / 1000)) : 0;
+  const restProgress  = inRest  ? Math.max(0, 1 - (simNow - w._idleSince)   / (sv.rest  * 1000)) : 0;
+  const sleepProgress = inSleep ? Math.max(0, 1 - (simNow - w._lastEmptyAt) / (sv.sleep * 1000)) : 0;
+  const restRemain    = inRest  ? Math.max(0, Math.ceil((sv.rest  * 1000 - (simNow - w._idleSince))   / 1000)) : 0;
+  const sleepRemain   = inSleep ? Math.max(0, Math.ceil((sv.sleep * 1000 - (simNow - w._lastEmptyAt)) / 1000)) : 0;
 
   const activeQ = sv.queues.find(q => q.name === (w.queue || w.assignedQueue));
   const color = activeQ?.color || null;
@@ -824,10 +823,7 @@ function init() {
       sv.retryPool = [];
       sv._lastBalanceAt = null;
       for (const q of sv.queues) { q.pending = []; q.processed = 0; q.failed = 0; }
-      for (const w of sv.workers) {
-        w.state = 'idle'; w.queue = null; w.progress = 0;
-        w._job = null; w._flashAt = null; w._startReal = null;
-      }
+      sv.workers = buildWorkersForSupervisor(sv);
     }
   });
 
