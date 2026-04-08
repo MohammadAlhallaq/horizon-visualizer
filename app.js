@@ -1,9 +1,7 @@
 // ─── Modal tabs ───────────────────────────────────────────────────────────────
 
-let _currentTab = 'identity';
 
 function switchModalTab(tab) {
-  _currentTab = tab;
   document.querySelectorAll('.modal-tab').forEach(t => {
     t.classList.toggle('active', t.dataset.tab === tab);
   });
@@ -63,9 +61,7 @@ function initDeleteConfirm() {
 
 function confirmDelete(id) {
   const sv = state.supervisors.find(s => s.id == id);
-  if (!sv) return;
   _deleteTargetId = id;
-
   document.getElementById('confirm-message').textContent = `Remove "${sv.name}" and all its workers?`;
   document.getElementById('confirm-overlay').classList.remove('hidden');
 }
@@ -137,9 +133,9 @@ function buildWorkersForSupervisor(sv) {
   if (sv.balance === 'simple') {
     // processes total, split evenly across queues (queue-dedicated, no scaling)
     // e.g. 2 queues, 10 processes → [5, 5] | 3 queues, 10 → [4, 3, 3]
-    const total  = Math.max(numQueues, sv.processes);
-    const base   = Math.floor(total / numQueues);
-    const rem    = total % numQueues;
+    const total = Math.max(numQueues, sv.processes);
+    const base = Math.floor(total / numQueues);
+    const rem = total % numQueues;
     const workers = [];
     let wi = 0;
     sv.queues.forEach((q, qi) => {
@@ -232,7 +228,7 @@ let throughputWindow = [];
 const CHART_POINTS = 120;
 const CHART_SAMPLE_MS = 250; // real ms between samples
 let lastSampleAt = 0;
-let tpsHistory     = new Array(CHART_POINTS).fill(0);
+let tpsHistory = new Array(CHART_POINTS).fill(0);
 let pendingHistory = new Array(CHART_POINTS).fill(0);
 
 function tick(now) {
@@ -265,7 +261,7 @@ function tick(now) {
     const tps = Math.round(throughputWindow.length * state.speed);
     const pending = state.supervisors.reduce((s, sv) =>
       s + sv.queues.reduce((qs, q) => qs + q.pending.length, 0) + sv.retryPool.length, 0);
-    tpsHistory.push(tps);     tpsHistory.shift();
+    tpsHistory.push(tps); tpsHistory.shift();
     pendingHistory.push(pending); pendingHistory.shift();
   }
 
@@ -417,10 +413,10 @@ function isWorkerAvailable(worker, sv) {
   if (worker.state !== 'idle') return false;
   // rest: mandatory idle period after each job (sim time)
   if (sv.rest > 0 && worker._idleSince !== null &&
-      simNow - worker._idleSince < sv.rest * 1000) return false;
+    simNow - worker._idleSince < sv.rest * 1000) return false;
   // sleep: poll interval after finding queue empty (sim time)
   if (sv.sleep > 0 && worker._lastEmptyAt !== null &&
-      simNow - worker._lastEmptyAt < sv.sleep * 1000) return false;
+    simNow - worker._lastEmptyAt < sv.sleep * 1000) return false;
   return true;
 }
 
@@ -496,18 +492,18 @@ function assignWorkerToJob(worker, queue) {
 
 function drawChart(canvas, data, color) {
   const dpr = window.devicePixelRatio || 1;
-  const W   = canvas.offsetWidth;
-  const H   = canvas.offsetHeight;
+  const W = canvas.offsetWidth;
+  const H = canvas.offsetHeight;
   if (!W || !H) return;
 
-  canvas.width  = W * dpr;
+  canvas.width = W * dpr;
   canvas.height = H * dpr;
 
   const ctx = canvas.getContext('2d');
   ctx.scale(dpr, dpr);
 
   const max = Math.max(...data, 1);
-  const n   = data.length;
+  const n = data.length;
   const xStep = W / (n - 1);
 
   const px = (i) => i * xStep;
@@ -530,8 +526,8 @@ function drawChart(canvas, data, color) {
   ctx.beginPath();
   data.forEach((v, i) => i === 0 ? ctx.moveTo(px(i), py(v)) : ctx.lineTo(px(i), py(v)));
   ctx.strokeStyle = color;
-  ctx.lineWidth   = 1.5;
-  ctx.lineJoin    = 'round';
+  ctx.lineWidth = 1.5;
+  ctx.lineJoin = 'round';
   ctx.stroke();
 
   // Current value dot
@@ -545,14 +541,14 @@ function drawChart(canvas, data, color) {
 }
 
 function drawCharts() {
-  const tps     = Math.round(throughputWindow.length * state.speed);
+  const tps = Math.round(throughputWindow.length * state.speed);
   const pending = state.supervisors.reduce((s, sv) =>
     s + sv.queues.reduce((qs, q) => qs + q.pending.length, 0) + sv.retryPool.length, 0);
 
-  document.getElementById('chart-tps-val').textContent     = `${tps} jobs/s`;
+  document.getElementById('chart-tps-val').textContent = `${tps} jobs/s`;
   document.getElementById('chart-pending-val').textContent = `${pending} pending`;
 
-  drawChart(document.getElementById('chart-tps'),     tpsHistory,     '#7c3aed');
+  drawChart(document.getElementById('chart-tps'), tpsHistory, '#7c3aed');
   drawChart(document.getElementById('chart-pending'), pendingHistory, '#06b6d4');
 }
 
@@ -734,10 +730,10 @@ function renderWorker(w, sv) {
   const inSleep = !inRest && w.state === 'idle' && sv.sleep > 0 && w._lastEmptyAt !== null &&
     simNow - w._lastEmptyAt < sv.sleep * 1000;
 
-  const restProgress  = inRest  ? Math.max(0, 1 - (simNow - w._idleSince)   / (sv.rest  * 1000)) : 0;
+  const restProgress = inRest ? Math.max(0, 1 - (simNow - w._idleSince) / (sv.rest * 1000)) : 0;
   const sleepProgress = inSleep ? Math.max(0, 1 - (simNow - w._lastEmptyAt) / (sv.sleep * 1000)) : 0;
-  const restRemain    = inRest  ? Math.max(0, Math.ceil((sv.rest  * 1000 - (simNow - w._idleSince))   / 1000)) : 0;
-  const sleepRemain   = inSleep ? Math.max(0, Math.ceil((sv.sleep * 1000 - (simNow - w._lastEmptyAt)) / 1000)) : 0;
+  const restRemain = inRest ? Math.max(0, Math.ceil((sv.rest * 1000 - (simNow - w._idleSince)) / 1000)) : 0;
+  const sleepRemain = inSleep ? Math.max(0, Math.ceil((sv.sleep * 1000 - (simNow - w._lastEmptyAt)) / 1000)) : 0;
 
   const activeQ = sv.queues.find(q => q.name === (w.queue || w.assignedQueue));
   const color = activeQ?.color || null;
@@ -750,31 +746,31 @@ function renderWorker(w, sv) {
 
   if (inRest) {
     borderStyle = 'border-color:#f59e0b88';
-    bgStyle     = 'background:#f59e0b0d';
-    stateClass  = '';
+    bgStyle = 'background:#f59e0b0d';
+    stateClass = '';
     innerContent = `<span style="color:#f59e0b;font-size:8px;line-height:1">${restRemain}s</span>`;
-    progressBar  = `<div class="absolute bottom-0 left-0 h-0.5" style="width:${Math.round(restProgress * 100)}%;background:#f59e0b"></div>`;
+    progressBar = `<div class="absolute bottom-0 left-0 h-0.5" style="width:${Math.round(restProgress * 100)}%;background:#f59e0b"></div>`;
   } else if (inSleep) {
     borderStyle = 'border-color:#06b6d433';
-    bgStyle     = '';
-    stateClass  = 'bg-hz-surface2';
+    bgStyle = '';
+    stateClass = 'bg-hz-surface2';
     innerContent = `<span style="color:#06b6d4;font-size:8px;line-height:1">${sleepRemain}s</span>`;
-    progressBar  = `<div class="absolute bottom-0 left-0 h-0.5" style="width:${Math.round(sleepProgress * 100)}%;background:#06b6d4"></div>`;
+    progressBar = `<div class="absolute bottom-0 left-0 h-0.5" style="width:${Math.round(sleepProgress * 100)}%;background:#06b6d4"></div>`;
   } else {
     borderStyle = w.state === 'busy' && color
       ? `border-color:${color}`
       : idleColor ? `border-color:${idleColor}44` : '';
-    bgStyle    = w.state === 'busy' && color ? `background:${color}22` : '';
+    bgStyle = w.state === 'busy' && color ? `background:${color}22` : '';
     stateClass = {
-      idle:   'border-hz-border bg-hz-surface2 text-hz-muted',
-      busy:   'text-violet-500',
-      done:   'border-emerald-500/50 bg-emerald-500/10 text-emerald-500',
+      idle: 'border-hz-border bg-hz-surface2 text-hz-muted',
+      busy: 'text-violet-500',
+      done: 'border-emerald-500/50 bg-emerald-500/10 text-emerald-500',
       failed: 'border-red-500/50 bg-red-500/10 text-red-500',
     }[w.state] || '';
     innerContent = `
-      ${w.state === 'idle'   ? `<span style="${idleColor ? `color:${idleColor}` : ''}">${w.label}</span>` : ''}
-      ${w.state === 'busy'   ? `<span style="color:${color}">${w.label}</span>` : ''}
-      ${w.state === 'done'   ? '&#10003;' : ''}
+      ${w.state === 'idle' ? `<span style="${idleColor ? `color:${idleColor}` : ''}">${w.label}</span>` : ''}
+      ${w.state === 'busy' ? `<span style="color:${color}">${w.label}</span>` : ''}
+      ${w.state === 'done' ? '&#10003;' : ''}
       ${w.state === 'failed' ? '&#10007;' : ''}
     `;
     progressBar = w.state === 'busy'
@@ -898,7 +894,7 @@ function saveModal() {
   const backoffRaw = document.getElementById('sv-backoff').value;
   const backoff = backoffRaw.split(',').map(s => parseFloat(s.trim())).filter(n => !isNaN(n));
 
-  const isAuto   = balance === 'auto';
+  const isAuto = balance === 'auto';
 
   const opts = {
     name: document.getElementById('sv-name').value.trim() || 'supervisor',
@@ -1028,9 +1024,9 @@ function init() {
     state.autoDispatch.enabled = !state.autoDispatch.enabled;
     state.autoDispatch._accums.clear();
     adToggle.textContent = state.autoDispatch.enabled ? 'On' : 'Off';
-    adToggle.style.borderColor  = state.autoDispatch.enabled ? '#7c3aed' : '';
-    adToggle.style.color        = state.autoDispatch.enabled ? '#7c3aed' : '';
-    adToggle.style.background   = state.autoDispatch.enabled ? '#7c3aed18' : '';
+    adToggle.style.borderColor = state.autoDispatch.enabled ? '#7c3aed' : '';
+    adToggle.style.color = state.autoDispatch.enabled ? '#7c3aed' : '';
+    adToggle.style.background = state.autoDispatch.enabled ? '#7c3aed18' : '';
   });
 
   document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
