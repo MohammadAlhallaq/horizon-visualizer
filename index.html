@@ -159,10 +159,10 @@
       border-radius: 10px;
       box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.6);
       pointer-events: none;
-      transition: top 0.25s cubic-bezier(.4,0,.2,1),
-                  left 0.25s cubic-bezier(.4,0,.2,1),
-                  width 0.25s cubic-bezier(.4,0,.2,1),
-                  height 0.25s cubic-bezier(.4,0,.2,1);
+      transition: top 0.25s cubic-bezier(.4, 0, .2, 1),
+        left 0.25s cubic-bezier(.4, 0, .2, 1),
+        width 0.25s cubic-bezier(.4, 0, .2, 1),
+        height 0.25s cubic-bezier(.4, 0, .2, 1);
     }
 
     #tour-card {
@@ -175,8 +175,75 @@
       padding: 18px 20px 16px;
       box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
       font-family: 'SF Mono', 'Fira Code', monospace;
-      transition: top 0.25s cubic-bezier(.4,0,.2,1),
-                  left 0.25s cubic-bezier(.4,0,.2,1);
+      transition: top 0.25s cubic-bezier(.4, 0, .2, 1),
+        left 0.25s cubic-bezier(.4, 0, .2, 1);
+    }
+
+    /* Modal tabs */
+    .modal-tab {
+      padding: 10px 14px;
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--hz-muted);
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      cursor: pointer;
+      transition: color 0.15s, border-color 0.15s;
+    }
+
+    .modal-tab:hover {
+      color: var(--hz-txt);
+    }
+
+    .modal-tab.active {
+      color: #7c3aed;
+      border-bottom-color: #7c3aed;
+    }
+
+    .modal-section.hidden {
+      display: none;
+    }
+
+    /* Charts collapsible */
+    #charts-content {
+      transition: max-height 0.2s ease;
+    }
+
+    #charts-section.collapsed #charts-content {
+      display: none;
+    }
+
+    #charts-section.collapsed #charts-arrow {
+      transform: rotate(-90deg);
+    }
+
+    /* Search input */
+    .search-input {
+      background: var(--hz-surface2);
+      border: 1px solid var(--hz-border);
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 11px;
+      color: var(--hz-txt);
+      width: 100%;
+      outline: none;
+    }
+
+    .search-input:focus {
+      border-color: #7c3aed;
+    }
+
+    .search-input::placeholder {
+      color: var(--hz-muted);
+    }
+
+
+    @media (max-width: 640px) {
+      .modal-tab {
+        padding: 8px 10px;
+        font-size: 10px;
+      }
     }
   </style>
 </head>
@@ -221,6 +288,7 @@
       <!-- Supervisors -->
       <section class="p-4 border-b border-hz-border flex flex-col gap-2.5">
         <h3 class="text-[10px] uppercase tracking-[0.12em] text-hz-muted">Supervisors</h3>
+        <input type="text" id="sv-search" placeholder="Search supervisors..." class="search-input" />
         <div id="supervisors-list" class="flex flex-col gap-1.5"></div>
         <button id="add-supervisor"
           class="px-3 py-1.5 border border-hz-border hover:border-violet-500 hover:text-violet-500 text-hz-muted text-xs font-semibold rounded-lg cursor-pointer transition-colors text-center">
@@ -292,7 +360,8 @@
     <main class="flex-1 flex flex-col overflow-hidden min-w-0">
 
       <!-- Mobile top bar -->
-      <div class="md:hidden flex items-center justify-between px-4 py-3 bg-hz-surface border-b border-hz-border shrink-0">
+      <div
+        class="md:hidden flex items-center justify-between px-4 py-3 bg-hz-surface border-b border-hz-border shrink-0">
         <div class="flex items-center gap-2 text-violet-500 font-bold tracking-widest text-sm">
           <span>&#9670;</span>
           <span>Horizon Visualizer</span>
@@ -305,15 +374,18 @@
 
       <!-- Stats bar -->
       <div id="stats-bar" class="grid grid-cols-3 md:flex bg-hz-surface border-b border-hz-border shrink-0">
-        <div class="flex flex-col items-center px-3 md:px-5 py-3 border-r border-b md:border-b-0 border-hz-border gap-0.5">
+        <div
+          class="flex flex-col items-center px-3 md:px-5 py-3 border-r border-b md:border-b-0 border-hz-border gap-0.5">
           <span id="stat-throughput" class="text-xl md:text-2xl font-bold text-violet-500 leading-none">0</span>
           <span class="text-[10px] uppercase tracking-widest text-hz-muted">jobs/sec</span>
         </div>
-        <div class="flex flex-col items-center px-3 md:px-5 py-3 border-r border-b md:border-b-0 border-hz-border gap-0.5">
+        <div
+          class="flex flex-col items-center px-3 md:px-5 py-3 border-r border-b md:border-b-0 border-hz-border gap-0.5">
           <span id="stat-processed" class="text-xl md:text-2xl font-bold text-violet-500 leading-none">0</span>
           <span class="text-[10px] uppercase tracking-widest text-hz-muted">processed</span>
         </div>
-        <div class="flex flex-col items-center px-3 md:px-5 py-3 border-b md:border-r md:border-b-0 border-hz-border gap-0.5">
+        <div
+          class="flex flex-col items-center px-3 md:px-5 py-3 border-b md:border-r md:border-b-0 border-hz-border gap-0.5">
           <span id="stat-retried" class="text-xl md:text-2xl font-bold text-violet-500 leading-none">0</span>
           <span class="text-[10px] uppercase tracking-widest text-hz-muted">retried</span>
         </div>
@@ -331,21 +403,28 @@
         </div>
       </div>
 
-      <!-- Charts strip -->
-      <div class="flex flex-col md:flex-row shrink-0 border-b border-hz-border bg-hz-surface">
-        <div class="flex-1 flex flex-col px-4 pt-2.5 pb-2 border-b md:border-b-0 md:border-r border-hz-border">
-          <div class="flex justify-between items-center mb-1.5">
-            <span class="text-[10px] uppercase tracking-widest text-hz-muted">Throughput</span>
-            <span id="chart-tps-val" class="text-[11px] font-bold text-violet-500">0 jobs/s</span>
+      <!-- Charts strip (collapsible) -->
+      <div id="charts-section" class="shrink-0 border-b border-hz-border bg-hz-surface">
+        <button id="charts-toggle"
+          class="w-full flex items-center justify-between px-4 py-2 hover:bg-hz-surface2 transition-colors">
+          <span class="text-[10px] uppercase tracking-widest text-hz-muted">Charts</span>
+          <span id="charts-arrow" class="text-hz-muted text-xs transition-transform">▼</span>
+        </button>
+        <div id="charts-content" class="flex flex-col md:flex-row pt-1">
+          <div class="flex-1 flex flex-col px-4 pt-0 pb-2 border-b md:border-b-0 md:border-r border-hz-border">
+            <div class="flex justify-between items-center mb-1.5">
+              <span class="text-[10px] uppercase tracking-widest text-hz-muted">Throughput</span>
+              <span id="chart-tps-val" class="text-[11px] font-bold text-violet-500">0 jobs/s</span>
+            </div>
+            <canvas id="chart-tps" height="48" style="width:100%;display:block"></canvas>
           </div>
-          <canvas id="chart-tps" height="48" style="width:100%;display:block"></canvas>
-        </div>
-        <div class="flex-1 flex flex-col px-4 pt-2.5 pb-2">
-          <div class="flex justify-between items-center mb-1.5">
-            <span class="text-[10px] uppercase tracking-widest text-hz-muted">Queue Depth</span>
-            <span id="chart-pending-val" class="text-[11px] font-bold text-cyan-500">0 pending</span>
+          <div class="flex-1 flex flex-col px-4 pt-0 pb-2">
+            <div class="flex justify-between items-center mb-1.5">
+              <span class="text-[10px] uppercase tracking-widest text-hz-muted">Queue Depth</span>
+              <span id="chart-pending-val" class="text-[11px] font-bold text-cyan-500">0 pending</span>
+            </div>
+            <canvas id="chart-pending" height="48" style="width:100%;display:block"></canvas>
           </div>
-          <canvas id="chart-pending" height="48" style="width:100%;display:block"></canvas>
         </div>
       </div>
 
@@ -366,243 +445,274 @@
           class="text-hz-muted hover:text-hz-txt text-xl leading-none cursor-pointer transition-colors">&times;</button>
       </div>
 
-      <div class="p-5 flex flex-col gap-4">
+      <!-- Tabs -->
+      <div id="modal-tabs" class="flex border-b border-hz-border px-2">
+        <button class="modal-tab active" data-tab="identity">Identity</button>
+        <button class="modal-tab" data-tab="balance">Balance</button>
+        <button class="modal-tab" data-tab="jobs">Jobs</button>
+        <button class="modal-tab" data-tab="workers">Workers</button>
+      </div>
 
+      <div class="p-5 flex flex-col gap-4" id="modal-body">
         <!-- Identity -->
-        <div class="bg-hz-surface2 border border-hz-border rounded-xl p-4 flex flex-col gap-3">
-          <div class="text-[10px] uppercase tracking-[0.12em] text-hz-muted font-semibold">Identity</div>
+        <div class="modal-section" data-section="identity">
+          <div class="bg-hz-surface2 border border-hz-border rounded-xl p-4 flex flex-col gap-3">
+            <div class="text-[10px] uppercase tracking-[0.12em] text-hz-muted font-semibold">Identity</div>
 
-          <div class="flex flex-col gap-1">
-            <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1">
-              Name
-            </label>
-            <input type="text" id="sv-name" placeholder="supervisor-1"
-              class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
-          </div>
+            <div class="flex flex-col gap-1">
+              <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1">
+                Name
+              </label>
+              <input type="text" id="sv-name" placeholder="supervisor-1"
+                class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
+            </div>
 
-          <div class="flex flex-col gap-1">
-            <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
-              Queues
-              <span class="tip-icon" data-tip-id="queues">ⓘ</span>
-            </label>
-            <input type="text" id="sv-queues" placeholder="default, emails, notifications"
-              class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
+            <div class="flex flex-col gap-1">
+              <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
+                Queues
+                <span class="tip-icon" data-tip-id="queues">ⓘ</span>
+              </label>
+              <input type="text" id="sv-queues" placeholder="default, emails, notifications"
+                class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
+            </div>
           </div>
         </div>
 
         <!-- Balance -->
-        <div class="bg-hz-surface2 border border-hz-border rounded-xl p-4 flex flex-col gap-3">
-          <div class="text-[10px] uppercase tracking-[0.12em] text-hz-muted font-semibold flex items-center gap-1.5">
-            Balance Strategy
-            <span class="tip-icon" data-tip-id="balance">ⓘ</span>
-          </div>
-          <select id="sv-balance"
-            class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors">
-            <option value="auto">auto — dynamic scaling per queue load</option>
-            <option value="simple">simple — fixed workers per queue, no scaling</option>
-            <option value="false">false — no balance, all workers on highest priority queue</option>
-          </select>
-
-          <!-- auto -->
-          <div class="balance-group flex flex-col gap-3" data-balance="auto">
-            <div class="flex flex-col gap-1">
-              <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
-                Auto Scaling Strategy
-                <span class="tip-icon" data-tip-id="autoscaling">ⓘ</span>
-              </label>
-              <select id="sv-autoscaling"
-                class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors">
-                <option value="size">size — scale by job count</option>
-                <option value="time">time — scale by estimated clear time</option>
-              </select>
+        <div class="modal-section hidden" data-section="balance">
+          <div class="bg-hz-surface2 border border-hz-border rounded-xl p-4 flex flex-col gap-3">
+            <div class="text-[10px] uppercase tracking-[0.12em] text-hz-muted font-semibold flex items-center gap-1.5">
+              Balance Strategy
+              <span class="tip-icon" data-tip-id="balance">ⓘ</span>
             </div>
-            <div class="grid grid-cols-2 gap-2">
+            <select id="sv-balance"
+              class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors">
+              <option value="auto">auto — dynamic scaling per queue load</option>
+              <option value="simple">simple — fixed workers per queue, no scaling</option>
+              <option value="false">false — no balance, all workers on highest priority queue</option>
+            </select>
+
+            <!-- auto -->
+            <div class="balance-group flex flex-col gap-3" data-balance="auto">
+              <div class="flex flex-col gap-1">
+                <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
+                  Auto Scaling Strategy
+                  <span class="tip-icon" data-tip-id="autoscaling">ⓘ</span>
+                </label>
+                <select id="sv-autoscaling"
+                  class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors">
+                  <option value="size">size — scale by job count</option>
+                  <option value="time">time — scale by estimated clear time</option>
+                </select>
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <div class="flex flex-col gap-1">
+                  <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
+                    Processes
+                    <span class="tip-icon" data-tip-id="processes-auto">ⓘ</span>
+                  </label>
+                  <input type="number" id="sv-processes" value="5" min="1" max="50"
+                    class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
+                </div>
+                <div class="flex flex-col gap-1">
+                  <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
+                    Min Processes
+                    <span class="tip-icon" data-tip-id="min-processes-auto">ⓘ</span>
+                  </label>
+                  <input type="number" id="sv-min-processes" value="1" min="1" max="20"
+                    class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
+                </div>
+                <div class="flex flex-col gap-1">
+                  <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
+                    Max Processes
+                    <span class="tip-icon" data-tip-id="max-processes-auto">ⓘ</span>
+                  </label>
+                  <input type="number" id="sv-max-processes" value="10" min="1" max="50"
+                    class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
+                </div>
+                <div class="flex flex-col gap-1">
+                  <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
+                    Balance Max Shift
+                    <span class="tip-icon" data-tip-id="max-shift">ⓘ</span>
+                  </label>
+                  <input type="number" id="sv-balance-max-shift" value="1" min="1" max="10"
+                    class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
+                </div>
+                <div class="flex flex-col gap-1">
+                  <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
+                    Balance Cooldown
+                    <span class="tip-icon" data-tip-id="cooldown">ⓘ</span>
+                  </label>
+                  <input type="number" id="sv-balance-cooldown" value="3" min="1" max="30"
+                    class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
+                </div>
+              </div>
+            </div>
+
+            <!-- simple -->
+            <div class="balance-group flex flex-col gap-3" data-balance="simple">
               <div class="flex flex-col gap-1">
                 <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
                   Processes
-                  <span class="tip-icon" data-tip-id="processes-auto">ⓘ</span>
+                  <span class="tip-icon" data-tip-id="processes-simple">ⓘ</span>
                 </label>
-                <input type="number" id="sv-processes" value="5" min="1" max="50"
-                  class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
-              </div>
-              <div class="flex flex-col gap-1">
-                <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
-                  Min Processes
-                  <span class="tip-icon" data-tip-id="min-processes-auto">ⓘ</span>
-                </label>
-                <input type="number" id="sv-min-processes" value="1" min="1" max="20"
-                  class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
-              </div>
-              <div class="flex flex-col gap-1">
-                <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
-                  Max Processes
-                  <span class="tip-icon" data-tip-id="max-processes-auto">ⓘ</span>
-                </label>
-                <input type="number" id="sv-max-processes" value="10" min="1" max="50"
-                  class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
-              </div>
-              <div class="flex flex-col gap-1">
-                <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
-                  Balance Max Shift
-                  <span class="tip-icon" data-tip-id="max-shift">ⓘ</span>
-                </label>
-                <input type="number" id="sv-balance-max-shift" value="1" min="1" max="10"
-                  class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
-              </div>
-              <div class="flex flex-col gap-1">
-                <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
-                  Balance Cooldown
-                  <span class="tip-icon" data-tip-id="cooldown">ⓘ</span>
-                </label>
-                <input type="number" id="sv-balance-cooldown" value="3" min="1" max="30"
+                <input type="number" id="sv-simple-processes" value="5" min="1" max="50"
                   class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
               </div>
             </div>
-          </div>
 
-          <!-- simple -->
-          <div class="balance-group flex flex-col gap-3" data-balance="simple">
-            <div class="flex flex-col gap-1">
-              <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
-                Processes
-                <span class="tip-icon" data-tip-id="processes-simple">ⓘ</span>
-              </label>
-              <input type="number" id="sv-simple-processes" value="5" min="1" max="50"
-                class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
-            </div>
-          </div>
-
-          <!-- false -->
-          <div class="balance-group flex flex-col gap-3" data-balance="false">
-            <div class="grid grid-cols-2 gap-2">
-              <div class="flex flex-col gap-1">
-                <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
-                  Min Processes
-                  <span class="tip-icon" data-tip-id="min-processes-false">ⓘ</span>
-                </label>
-                <input type="number" id="sv-false-min-processes" value="1" min="1" max="20"
-                  class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
-              </div>
-              <div class="flex flex-col gap-1">
-                <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
-                  Max Processes
-                  <span class="tip-icon" data-tip-id="max-processes-false">ⓘ</span>
-                </label>
-                <input type="number" id="sv-false-max-processes" value="10" min="1" max="50"
-                  class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
+            <!-- false -->
+            <div class="balance-group flex flex-col gap-3" data-balance="false">
+              <div class="grid grid-cols-2 gap-2">
+                <div class="flex flex-col gap-1">
+                  <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
+                    Min Processes
+                    <span class="tip-icon" data-tip-id="min-processes-false">ⓘ</span>
+                  </label>
+                  <input type="number" id="sv-false-min-processes" value="1" min="1" max="20"
+                    class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
+                </div>
+                <div class="flex flex-col gap-1">
+                  <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
+                    Max Processes
+                    <span class="tip-icon" data-tip-id="max-processes-false">ⓘ</span>
+                  </label>
+                  <input type="number" id="sv-false-max-processes" value="10" min="1" max="50"
+                    class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
+                </div>
               </div>
             </div>
           </div>
         </div>
 
         <!-- Job Behavior -->
-        <div class="bg-hz-surface2 border border-hz-border rounded-xl p-4 flex flex-col gap-3">
-          <div class="text-[10px] uppercase tracking-[0.12em] text-hz-muted font-semibold">Job Behavior</div>
-          <div class="grid grid-cols-2 gap-2">
-            <div class="flex flex-col gap-1">
-              <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
-                Runtime <span class="normal-case opacity-60">ms</span>
-                <span class="tip-icon" data-tip-id="runtime">ⓘ</span>
-              </label>
-              <input type="number" id="sv-job-runtime" value="800" min="100" max="10000" step="100"
-                class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
+        <div class="modal-section hidden" data-section="jobs">
+          <div class="bg-hz-surface2 border border-hz-border rounded-xl p-4 flex flex-col gap-3">
+            <div class="text-[10px] uppercase tracking-[0.12em] text-hz-muted font-semibold">Job Behavior</div>
+            <div class="grid grid-cols-2 gap-2">
+              <div class="flex flex-col gap-1">
+                <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
+                  Runtime <span class="normal-case opacity-60">ms</span>
+                  <span class="tip-icon" data-tip-id="runtime">ⓘ</span>
+                </label>
+                <input type="number" id="sv-job-runtime" value="800" min="100" max="10000" step="100"
+                  class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
+              </div>
+              <div class="flex flex-col gap-1">
+                <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
+                  Failure Rate <span class="normal-case opacity-60">%</span>
+                  <span class="tip-icon" data-tip-id="failure-rate">ⓘ</span>
+                </label>
+                <input type="number" id="sv-failure-rate" value="5" min="0" max="100"
+                  class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
+              </div>
+              <div class="flex flex-col gap-1">
+                <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
+                  Tries
+                  <span class="tip-icon" data-tip-id="tries">ⓘ</span>
+                </label>
+                <input type="number" id="sv-tries" value="1" min="1" max="20"
+                  class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
+              </div>
+              <div class="flex flex-col gap-1">
+                <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
+                  Timeout <span class="normal-case opacity-60">sec</span>
+                  <span class="tip-icon" data-tip-id="timeout">ⓘ</span>
+                </label>
+                <input type="number" id="sv-timeout" value="60" min="1" max="300"
+                  class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
+              </div>
             </div>
             <div class="flex flex-col gap-1">
               <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
-                Failure Rate <span class="normal-case opacity-60">%</span>
-                <span class="tip-icon" data-tip-id="failure-rate">ⓘ</span>
+                Backoff <span class="normal-case opacity-60">sec</span>
+                <span class="tip-icon" data-tip-id="backoff">ⓘ</span>
               </label>
-              <input type="number" id="sv-failure-rate" value="5" min="0" max="100"
+              <input type="text" id="sv-backoff" value="0" placeholder="0 or 1,5,10"
                 class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
             </div>
-            <div class="flex flex-col gap-1">
-              <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
-                Tries
-                <span class="tip-icon" data-tip-id="tries">ⓘ</span>
-              </label>
-              <input type="number" id="sv-tries" value="1" min="1" max="20"
-                class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
-            </div>
-            <div class="flex flex-col gap-1">
-              <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
-                Timeout <span class="normal-case opacity-60">sec</span>
-                <span class="tip-icon" data-tip-id="timeout">ⓘ</span>
-              </label>
-              <input type="number" id="sv-timeout" value="60" min="1" max="300"
-                class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
-            </div>
-          </div>
-          <div class="flex flex-col gap-1">
-            <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
-              Backoff <span class="normal-case opacity-60">sec</span>
-              <span class="tip-icon" data-tip-id="backoff">ⓘ</span>
-            </label>
-            <input type="text" id="sv-backoff" value="0" placeholder="0 or 1,5,10"
-              class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
           </div>
         </div>
 
         <!-- Worker Lifecycle -->
-        <div class="bg-hz-surface2 border border-hz-border rounded-xl p-4 flex flex-col gap-3">
-          <div class="text-[10px] uppercase tracking-[0.12em] text-hz-muted font-semibold">Worker Lifecycle</div>
-          <div class="grid grid-cols-2 gap-2">
-            <div class="flex flex-col gap-1">
-              <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
-                Sleep <span class="normal-case opacity-60">sec</span>
-                <span class="tip-icon" data-tip-id="sleep">ⓘ</span>
-              </label>
-              <input type="number" id="sv-sleep" value="3" min="0" max="60"
-                class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
+        <div class="modal-section hidden" data-section="workers">
+          <div class="bg-hz-surface2 border border-hz-border rounded-xl p-4 flex flex-col gap-3">
+            <div class="text-[10px] uppercase tracking-[0.12em] text-hz-muted font-semibold">Worker Lifecycle</div>
+            <div class="grid grid-cols-2 gap-2">
+              <div class="flex flex-col gap-1">
+                <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
+                  Sleep <span class="normal-case opacity-60">sec</span>
+                  <span class="tip-icon" data-tip-id="sleep">ⓘ</span>
+                </label>
+                <input type="number" id="sv-sleep" value="3" min="0" max="60"
+                  class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
+              </div>
+              <div class="flex flex-col gap-1">
+                <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
+                  Rest <span class="normal-case opacity-60">sec</span>
+                  <span class="tip-icon" data-tip-id="rest">ⓘ</span>
+                </label>
+                <input type="number" id="sv-rest" value="0" min="0" max="60"
+                  class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
+              </div>
+              <div class="flex flex-col gap-1">
+                <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
+                  Max Jobs
+                  <span class="tip-icon" data-tip-id="max-jobs">ⓘ</span>
+                </label>
+                <input type="number" id="sv-max-jobs" value="0" min="0" max="10000"
+                  class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
+              </div>
+              <div class="flex flex-col gap-1">
+                <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
+                  Max Time <span class="normal-case opacity-60">sec</span>
+                  <span class="tip-icon" data-tip-id="max-time">ⓘ</span>
+                </label>
+                <input type="number" id="sv-max-time" value="0" min="0" max="86400"
+                  class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
+              </div>
             </div>
             <div class="flex flex-col gap-1">
               <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
-                Rest <span class="normal-case opacity-60">sec</span>
-                <span class="tip-icon" data-tip-id="rest">ⓘ</span>
+                Memory <span class="normal-case opacity-60">MB</span>
+                <span class="tip-icon" data-tip-id="memory">ⓘ</span>
               </label>
-              <input type="number" id="sv-rest" value="0" min="0" max="60"
-                class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
-            </div>
-            <div class="flex flex-col gap-1">
-              <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
-                Max Jobs
-                <span class="tip-icon" data-tip-id="max-jobs">ⓘ</span>
-              </label>
-              <input type="number" id="sv-max-jobs" value="0" min="0" max="10000"
-                class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
-            </div>
-            <div class="flex flex-col gap-1">
-              <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
-                Max Time <span class="normal-case opacity-60">sec</span>
-                <span class="tip-icon" data-tip-id="max-time">ⓘ</span>
-              </label>
-              <input type="number" id="sv-max-time" value="0" min="0" max="86400"
+              <input type="number" id="sv-memory" value="128" min="1" max="4096"
                 class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
             </div>
           </div>
-          <div class="flex flex-col gap-1">
-            <label class="text-[10px] uppercase tracking-wide text-hz-muted flex items-center gap-1.5">
-              Memory <span class="normal-case opacity-60">MB</span>
-              <span class="tip-icon" data-tip-id="memory">ⓘ</span>
-            </label>
-            <input type="number" id="sv-memory" value="128" min="1" max="4096"
-              class="bg-hz-surface border border-hz-border rounded-lg text-hz-txt px-2 py-1.5 text-xs font-mono outline-none focus:border-violet-500 transition-colors" />
-          </div>
+
+        </div>
+
+        <div class="flex gap-2 justify-end px-5 py-4 border-t border-hz-border">
+          <button id="modal-cancel"
+            class="px-4 py-1.5 border border-hz-border hover:border-violet-500 hover:text-violet-500 text-hz-muted text-xs font-semibold rounded-lg cursor-pointer transition-colors">Cancel</button>
+          <button id="modal-save"
+            class="px-4 py-1.5 bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold rounded-lg cursor-pointer transition-colors">Save</button>
         </div>
 
       </div>
-
-      <div class="flex gap-2 justify-end px-5 py-4 border-t border-hz-border">
-        <button id="modal-cancel"
-          class="px-4 py-1.5 border border-hz-border hover:border-violet-500 hover:text-violet-500 text-hz-muted text-xs font-semibold rounded-lg cursor-pointer transition-colors">Cancel</button>
-        <button id="modal-save"
-          class="px-4 py-1.5 bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold rounded-lg cursor-pointer transition-colors">Save</button>
-      </div>
-
     </div>
   </div>
 
   <!-- Global tooltip — fixed position, never clipped by modal overflow -->
   <div id="hz-tooltip"></div>
+
+  <!-- Delete confirmation -->
+  <div id="confirm-overlay" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
+    <div id="confirm-dialog"
+      class="bg-hz-surface border border-hz-border rounded-xl px-6 py-5 max-w-xs w-full text-center shadow-[0_20px_60px_rgba(0,0,0,0.5)]">
+      <h4 class="mb-2 text-sm font-semibold text-hz-txt">Delete Supervisor?</h4>
+      <p id="confirm-message" class="mb-4 text-xs text-hz-muted">This will remove the supervisor and all its workers.
+      </p>
+      <div class="flex gap-2 justify-center">
+        <button id="confirm-cancel"
+          class="px-4 py-2 rounded-md text-xs font-semibold cursor-pointer border border-hz-border bg-transparent text-hz-muted transition-all hover:border-hz-txt hover:text-hz-txt">Cancel</button>
+        <button id="confirm-yes"
+          class="px-4 py-2 rounded-md text-xs font-semibold cursor-pointer border border-transparent bg-red-600 text-white transition-all hover:bg-red-700">Delete</button>
+      </div>
+    </div>
+  </div>
 
   <script src="app.js"></script>
 
@@ -768,16 +878,16 @@
 
       function destroy() {
         spotlight?.remove(); spotlight = null;
-        card?.remove();      card = null;
+        card?.remove(); card = null;
       }
 
       function position(rect, pos) {
         const GAP = 14;
-        const CW  = 296;
+        const CW = 296;
 
         if (pos === 'center' || !rect) {
-          card.style.top       = '50%';
-          card.style.left      = '50%';
+          card.style.top = '50%';
+          card.style.left = '50%';
           card.style.transform = 'translate(-50%, -50%)';
           return;
         }
@@ -790,33 +900,33 @@
           const t = rect.top + rect.height / 2 - ch / 2;
           card.style.top = `${Math.max(12, Math.min(t, window.innerHeight - ch - 12))}px`;
         } else if (pos === 'bottom') {
-          card.style.top  = `${rect.bottom + GAP}px`;
+          card.style.top = `${rect.bottom + GAP}px`;
           const l = rect.left + rect.width / 2 - CW / 2;
           card.style.left = `${Math.max(12, Math.min(l, window.innerWidth - CW - 12))}px`;
         }
       }
 
       function show(step) {
-        const el   = step.target ? document.querySelector(step.target) : null;
-        const PAD  = 7;
+        const el = step.target ? document.querySelector(step.target) : null;
+        const PAD = 7;
 
         if (el) {
           const r = el.getBoundingClientRect();
           spotlight.style.display = 'block';
-          spotlight.style.top     = `${r.top    - PAD}px`;
-          spotlight.style.left    = `${r.left   - PAD}px`;
-          spotlight.style.width   = `${r.width  + PAD * 2}px`;
-          spotlight.style.height  = `${r.height + PAD * 2}px`;
+          spotlight.style.top = `${r.top - PAD}px`;
+          spotlight.style.left = `${r.left - PAD}px`;
+          spotlight.style.width = `${r.width + PAD * 2}px`;
+          spotlight.style.height = `${r.height + PAD * 2}px`;
         } else {
           spotlight.style.display = 'none';
         }
 
         const isFirst = current === 0;
-        const isLast  = current === STEPS.length - 1;
+        const isLast = current === STEPS.length - 1;
 
-        const btnBase  = 'cursor:pointer;border-radius:7px;font-family:inherit;font-size:11px;font-weight:600;padding:6px 14px;transition:opacity .15s';
-        const btnPrev  = `${btnBase};background:transparent;border:1px solid var(--hz-border);color:var(--hz-muted)`;
-        const btnNext  = `${btnBase};background:#7c3aed;border:1px solid transparent;color:#fff`;
+        const btnBase = 'cursor:pointer;border-radius:7px;font-family:inherit;font-size:11px;font-weight:600;padding:6px 14px;transition:opacity .15s';
+        const btnPrev = `${btnBase};background:transparent;border:1px solid var(--hz-border);color:var(--hz-muted)`;
+        const btnNext = `${btnBase};background:#7c3aed;border:1px solid transparent;color:#fff`;
 
         card.innerHTML = `
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">

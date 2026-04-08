@@ -1,3 +1,92 @@
+// ─── Modal tabs ───────────────────────────────────────────────────────────────
+
+let _currentTab = 'identity';
+
+function switchModalTab(tab) {
+  _currentTab = tab;
+  document.querySelectorAll('.modal-tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.tab === tab);
+  });
+  document.querySelectorAll('.modal-section').forEach(s => {
+    s.classList.toggle('hidden', s.dataset.section !== tab);
+  });
+  if (tab === 'balance') {
+    updateModalVisibility(document.getElementById('sv-balance').value);
+  }
+}
+
+// ─── Charts toggle ─────────────────────────────────────────────────────────────
+
+let _chartsCollapsed = false;
+
+function initChartsToggle() {
+  document.getElementById('charts-toggle').addEventListener('click', () => {
+    _chartsCollapsed = !_chartsCollapsed;
+    document.getElementById('charts-section').classList.toggle('collapsed', _chartsCollapsed);
+  });
+}
+
+// ─── Supervisor search ─────────────────────────────────────────────────────────
+
+function initSupervisorSearch() {
+  document.getElementById('sv-search').addEventListener('input', e => {
+    const term = e.target.value.toLowerCase();
+    document.querySelectorAll('#supervisors-list > div').forEach(item => {
+      const name = item.querySelector('span')?.textContent.toLowerCase() || '';
+      item.style.display = name.includes(term) ? '' : 'none';
+    });
+  });
+}
+
+// ─── Delete confirmation ───────────────────────────────────────────────────────
+
+let _deleteTargetId = null;
+
+function initDeleteConfirm() {
+  const overlay = document.getElementById('confirm-overlay');
+  const cancelBtn = document.getElementById('confirm-cancel');
+  const yesBtn = document.getElementById('confirm-yes');
+
+  const hideOverlay = () => overlay.classList.add('hidden');
+  cancelBtn.addEventListener('click', hideOverlay);
+  yesBtn.addEventListener('click', () => {
+    if (_deleteTargetId !== null) {
+      removeSupervisor(_deleteTargetId);
+      _deleteTargetId = null;
+    }
+    hideOverlay();
+  });
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay) hideOverlay();
+  });
+}
+
+function confirmDelete(id) {
+  const sv = state.supervisors.find(s => s.id == id);
+  if (!sv) return;
+  _deleteTargetId = id;
+
+  document.getElementById('confirm-message').textContent = `Remove "${sv.name}" and all its workers?`;
+  document.getElementById('confirm-overlay').classList.remove('hidden');
+}
+
+// ─── Keyboard shortcuts ───────────────────────────────────────────────────────
+
+function initKeyboardShortcuts() {
+  document.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+    if (e.key === 'Escape') {
+      closeModal();
+      document.getElementById('confirm-overlay').classList.add('hidden');
+    }
+    if (e.key === ' ') {
+      e.preventDefault();
+      state.running = !state.running;
+      document.getElementById('sim-toggle').textContent = state.running ? 'Pause' : 'Resume';
+    }
+  });
+}
+
 // ─── State ───────────────────────────────────────────────────────────────────
 
 const state = {
@@ -713,7 +802,7 @@ function renderSidebarSupervisors() {
       <span class="text-xs font-semibold text-hz-txt truncate flex-1">${sv.name}</span>
       <div class="flex gap-1 shrink-0">
         <button onclick="openEditModal(${sv.id})" class="text-hz-muted hover:text-hz-txt text-xs px-1.5 py-0.5 rounded transition-colors cursor-pointer">&#9998;</button>
-        <button onclick="removeSupervisor(${sv.id})" class="text-hz-muted hover:text-red-500 text-xs px-1.5 py-0.5 rounded transition-colors cursor-pointer">&#10005;</button>
+        <button onclick="confirmDelete(${sv.id})" class="text-hz-muted hover:text-red-500 text-xs px-1.5 py-0.5 rounded transition-colors cursor-pointer">&#10005;</button>
       </div>
     </div>
   `).join('');
@@ -760,6 +849,7 @@ function openAddModal() {
   document.getElementById('sv-max-time').value = 0;
   document.getElementById('sv-memory').value = 128;
   updateModalVisibility('auto');
+  switchModalTab('identity');
   document.getElementById('modal-overlay').classList.add('modal-open');
 }
 
@@ -791,6 +881,7 @@ function openEditModal(id) {
   document.getElementById('sv-max-time').value = sv.maxTime;
   document.getElementById('sv-memory').value = sv.memory;
   updateModalVisibility(sv.balance);
+  switchModalTab('identity');
   document.getElementById('modal-overlay').classList.add('modal-open');
 }
 
@@ -898,6 +989,10 @@ function toggleTheme() {
 
 function init() {
   initTheme();
+  initChartsToggle();
+  initSupervisorSearch();
+  initDeleteConfirm();
+  initKeyboardShortcuts();
   renderSidebarSupervisors();
   render();
 
@@ -949,6 +1044,10 @@ function init() {
 
   document.getElementById('sv-balance').addEventListener('change', e => {
     updateModalVisibility(e.target.value);
+  });
+
+  document.querySelectorAll('.modal-tab').forEach(tab => {
+    tab.addEventListener('click', () => switchModalTab(tab.dataset.tab));
   });
 
   document.getElementById('dispatch-btn').addEventListener('click', () => {
